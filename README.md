@@ -65,17 +65,21 @@ Key observations:
 
 ---
 
+## Decisions
+
+| Decision | Choice | Reason |
+|---|---|---|
+| Record layout | **Variable-length** | No wasted space; static never outperforms variable |
+| Overhead scheme | **Option B** — one header field per record | CRC covers whole record; header-last write gives crash safety naturally |
+
+---
+
 ## Open Design Questions
 
-### Record layout: static vs variable-length
-
-**Option A — Static records** (fixed number of Fields per Record)
-- Simple; index-based access works
-- Wastes space when a Record has fewer Fields than the maximum
-
-**Option B — Variable-length records** (start marker + Fields until end marker)
-- More space-efficient; no gaps
-- Requires iterators instead of index access
-- Cannot determine up front how many Records fit in a sector
+- What does the header field contain exactly? (CRC algorithm, size, other flags?)
+- What is the record start marker / magic value?
+- How does the iterator API look in C?
+- Thread-safety mechanism: mutex, critical section, or caller-provided lock?
+- How are sectors managed — who erases, and when?
 
 ---
