@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include "iflash.h"
 #include "flashlog_error.h"
 
@@ -13,4 +14,6 @@ public:
 
 private:
     IFlash& flash_;
+    uint8_t key_size_  = 0;
+    uint8_t value_size_ = 0;
 };
