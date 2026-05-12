@@ -5,12 +5,12 @@ FieldStore::FieldStore(IFlash& flash)
 {
 }
 
-FieldStoreError FieldStore::init()
+FlashLogError FieldStore::init()
 {
-    return FieldStoreError::NOT_FORMATTED;
+    return FlashLogError::NOT_FORMATTED;
 }
 
-FieldStoreError FieldStore::format(size_t key_size, size_t value_size)
+FlashLogError FieldStore::format(size_t key_size, size_t value_size)
 {
-    return FieldStoreError::OK;
+    return FlashLogError::OK;
 }
