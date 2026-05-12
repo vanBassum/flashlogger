@@ -11,14 +11,15 @@ public:
 
     FlashLogError init();
     FlashLogError format(size_t key_size, size_t value_size);
-    FlashLogError append(uint32_t key, const void* value);
+    FlashLogError write(uint32_t index, uint32_t key, const void* value);
+    FlashLogError read(uint32_t index, void* key_out, void* value_out);
     uint8_t key_size() const;
     uint8_t value_size() const;
 
 private:
     IFlash&  flash_;
-    bool     initialized_ = false;
-    uint8_t  key_size_    = 0;
-    uint8_t  value_size_  = 0;
-    uint32_t next_index_  = 0;
+    bool     initialized_  = false;
+    uint8_t  key_size_     = 0;
+    uint8_t  value_size_   = 0;
+    uint32_t total_fields_ = 0;
 };

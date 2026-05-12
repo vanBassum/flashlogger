@@ -1,5 +1,6 @@
 #include "field_store.h"
 #include "crc16.h"
+#include <cstring>
 
 static constexpr uint32_t MAGIC = 0x464C4F47;
 
@@ -59,13 +60,13 @@ static uint32_t address_of_field(uint32_t index, size_t field_size, size_t secto
 FlashLogError FieldStore::format(size_t key_size, size_t value_size)
 {
     if (key_size == 0 || value_size == 0 || key_size > 4)
-        return FlashLogError::INVALID_ARGUMENT;
+        return FlashLogError::ARG_INVALID;
 
     uint8_t buf[HEADER_SIZE];
     encode_header(buf, static_cast<uint8_t>(key_size), static_cast<uint8_t>(value_size));
 
     size_t written = flash_.write(0, buf, HEADER_SIZE, 0);
-    return written == HEADER_SIZE ? FlashLogError::OK : FlashLogError::WRITE_ERROR;
+    return written == HEADER_SIZE ? FlashLogError::OK : FlashLogError::FLASH_WRITE_ERROR;
 }
 
 FlashLogError FieldStore::init()
@@ -73,61 +74,42 @@ FlashLogError FieldStore::init()
     uint8_t buf[HEADER_SIZE];
     size_t n = flash_.read(0, buf, HEADER_SIZE, 0);
     if (n != HEADER_SIZE)
-        return FlashLogError::READ_ERROR;
+        return FlashLogError::FLASH_READ_ERROR;
 
     uint32_t magic = decode_u32_le(buf);
     if (magic == 0xFFFFFFFF)
-        return FlashLogError::NOT_FORMATTED;
+        return FlashLogError::FORMAT_MISSING;
     if (magic != MAGIC)
-        return FlashLogError::UNKNOWN_FORMAT;
+        return FlashLogError::FORMAT_CORRUPT;
 
     uint16_t expected = crc16(buf, 6);
     if (decode_u16_le(buf + 6) != expected)
-        return FlashLogError::UNKNOWN_FORMAT;
+        return FlashLogError::FORMAT_CORRUPT;
 
-    key_size_    = buf[4];
-    value_size_  = buf[5];
-    initialized_ = true;
+    key_size_     = buf[4];
+    value_size_   = buf[5];
+    initialized_  = true;
 
     size_t field_size    = key_size_ + value_size_;
     size_t sector_size   = flash_.getSectorSize();
     size_t total_sectors = flash_.getSize() / sector_size;
-    size_t total_fields  =
+    total_fields_ = static_cast<uint32_t>(
         fields_in_sector(sector_size - HEADER_SIZE, field_size) +
-        (total_sectors - 1) * fields_in_sector(sector_size, field_size);
-
-    next_index_ = 0;
-    for (size_t i = 0; i < total_fields; i++) {
-        uint32_t address = address_of_field(static_cast<uint32_t>(i), field_size, sector_size);
-        uint8_t first_byte;
-        flash_.read(address, &first_byte, 1, 0);
-        if (first_byte == 0xFF) {
-            next_index_ = static_cast<uint32_t>(i);
-            break;
-        }
-        if (i == total_fields - 1)
-            next_index_ = static_cast<uint32_t>(total_fields);
-    }
+        (total_sectors - 1) * fields_in_sector(sector_size, field_size));
 
     return FlashLogError::OK;
 }
 
-FlashLogError FieldStore::append(uint32_t key, const void* value)
+FlashLogError FieldStore::write(uint32_t index, uint32_t key, const void* value)
 {
     if (!initialized_)
-        return FlashLogError::NOT_INITIALIZED;
+        return FlashLogError::STORE_NOT_INITIALIZED;
+    if (index >= total_fields_)
+        return FlashLogError::ARG_OUT_OF_BOUNDS;
 
-    size_t field_size   = key_size_ + value_size_;
-    size_t sector_size  = flash_.getSectorSize();
-    size_t total_sectors = flash_.getSize() / sector_size;
-    size_t total_fields  =
-        fields_in_sector(sector_size - HEADER_SIZE, field_size) +
-        (total_sectors - 1) * fields_in_sector(sector_size, field_size);
-
-    if (next_index_ >= static_cast<uint32_t>(total_fields))
-        return FlashLogError::FLASH_FULL;
-
-    uint32_t write_address = address_of_field(next_index_, field_size, sector_size);
+    size_t   field_size    = key_size_ + value_size_;
+    size_t   sector_size   = flash_.getSectorSize();
+    uint32_t field_address = address_of_field(index, field_size, sector_size);
 
     uint8_t key_bytes[4];
     key_bytes[0] = static_cast<uint8_t>(key);
@@ -135,15 +117,36 @@ FlashLogError FieldStore::append(uint32_t key, const void* value)
     key_bytes[2] = static_cast<uint8_t>(key >> 16);
     key_bytes[3] = static_cast<uint8_t>(key >> 24);
 
-    size_t key_written = flash_.write(write_address, key_bytes, key_size_, 0);
-    if (key_written != key_size_)
-        return FlashLogError::WRITE_ERROR;
+    flash_.write(field_address, key_bytes, key_size_, 0);
+    flash_.write(field_address + key_size_, value, value_size_, 0);
 
-    size_t value_written = flash_.write(write_address + key_size_, value, value_size_, 0);
-    if (value_written != value_size_)
-        return FlashLogError::WRITE_ERROR;
+    uint8_t key_readback[4]   = {0xFF, 0xFF, 0xFF, 0xFF};
+    flash_.read(field_address, key_readback, key_size_, 0);
+    if (memcmp(key_readback, key_bytes, key_size_) != 0)
+        return FlashLogError::FLASH_WRITE_ERROR;
 
-    next_index_++;
+    uint8_t value_readback[256];
+    flash_.read(field_address + key_size_, value_readback, value_size_, 0);
+    if (memcmp(value_readback, value, value_size_) != 0)
+        return FlashLogError::FLASH_WRITE_ERROR;
+
+    return FlashLogError::OK;
+}
+
+FlashLogError FieldStore::read(uint32_t index, void* key_out, void* value_out)
+{
+    if (!initialized_)
+        return FlashLogError::STORE_NOT_INITIALIZED;
+    if (index >= total_fields_)
+        return FlashLogError::ARG_OUT_OF_BOUNDS;
+
+    size_t   field_size    = key_size_ + value_size_;
+    size_t   sector_size   = flash_.getSectorSize();
+    uint32_t field_address = address_of_field(index, field_size, sector_size);
+
+    flash_.read(field_address,             key_out,   key_size_,   0);
+    flash_.read(field_address + key_size_, value_out, value_size_, 0);
+
     return FlashLogError::OK;
 }
 
