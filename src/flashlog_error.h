@@ -5,4 +5,8 @@ enum class FlashLogError {
     READ_ERROR,
     NOT_FORMATTED,
     WRITE_ERROR,
+    UNKNOWN_FORMAT,
+    INVALID_ARGUMENT,
+    NOT_INITIALIZED,
+    FLASH_FULL,
 };
