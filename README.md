@@ -88,11 +88,9 @@ Key observations:
 
 Noted here because LogBook.md is Bas-only; fold in / correct as needed.
 
-- **Layering intent:** the lower unit stays simple and dumb; the upper
-  unit (the influx-like point of key/value pairs) is where the hard
-  part lives. NOTE: naming drifted in discussion — earlier docs say
-  Record = set of Fields, today's phrasing was "records simple, entries
-  on top". Reconcile the names in LogBook before coding that layer.
+- **Layering intent (naming resolved 2026-07-06: keep Record/Field):**
+  Fields stay simple and dumb (the existing FieldStore); Records — the
+  influx-like points made of Fields — are where the hard part lives.
 - **Iterator:** caller-owned handle (same ownership idiom as the rest)
   used to read items; whatever sync/mutex story exists lives with the
   caller/wrapper, not inside the library core.
