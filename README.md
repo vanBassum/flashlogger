@@ -83,3 +83,28 @@ Key observations:
 - How are sectors managed — who erases, and when?
 
 ---
+
+## Parked ideas (Bas, 2026-07-06 discussion)
+
+Noted here because LogBook.md is Bas-only; fold in / correct as needed.
+
+- **Layering intent:** the lower unit stays simple and dumb; the upper
+  unit (the influx-like point of key/value pairs) is where the hard
+  part lives. NOTE: naming drifted in discussion — earlier docs say
+  Record = set of Fields, today's phrasing was "records simple, entries
+  on top". Reconcile the names in LogBook before coding that layer.
+- **Iterator:** caller-owned handle (same ownership idiom as the rest)
+  used to read items; whatever sync/mutex story exists lives with the
+  caller/wrapper, not inside the library core.
+- **Overwrite/read validity:** an entry handle stores a hash of the
+  records it spawned; on a later read or overwrite (clear-bits-only)
+  the hash reveals whether the ring has since lapped/invalidated it.
+  (Extends the LogBook's "indexer with a valid state / store a CRC"
+  note.)
+- **Deferred use case — handled-flags:** the application dedicates one
+  key/value pair per entry as a flags field; a service iterates
+  entries, performs a task (e.g. ship logs to a server), then clears
+  bits to mark it handled. Pure application convention on top of
+  Overwrite — the library only guarantees clear-bits-only writes.
+
+---
