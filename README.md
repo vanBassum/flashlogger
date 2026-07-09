@@ -1,18 +1,15 @@
 # FlashLoggerV2
 
-Portable, platform-agnostic C library for logging structured data to flash memory.
-
----
+Portable, platform-agnostic C++ library for logging structured data to
+flash memory.
 
 ## Constraints & Goals
 
 - No dynamic memory allocation
-- Use `stdint.h` types throughout for unambiguity
+- `stdint.h` types throughout for unambiguity
 - Simple API
-- Thread-safe
+- Thread-safe (the caller/wrapper owns the locking)
 - Operations: **Append**, **Read**, **Overwrite** (clear bits only)
-
----
 
 ## Terminology
 
@@ -21,88 +18,25 @@ Portable, platform-agnostic C library for logging structured data to flash memor
 | **Record** | One log entry, consisting of one or more Fields |
 | **Field** | A single key-value pair within a Record |
 
-Key size and value size are configured once at format time. After that they are static.
+Key size and value size are configured once at format time. After that
+they are static.
 
----
+## Build & test
 
-## Flash Efficiency Comparison
+```
+cmake -S . -B build
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+```
 
-Assumptions:
-- **Useful bytes** = avg fields × field size (key + value)
-- **Option A** overhead = 1 byte per field
-- **Option B** overhead = 1 header field per record (same size as a regular field)
-- **Option C** overhead = 4 bytes per record (fixed; x=4 assumed: CRC16 + status + reserved)
-- **Static max** = 7 fields per record
+## Documentation
 
-### 5-byte fields (1B key + 4B value)
+See [`docs/`](docs/):
 
-| Layout | Avg fields | Opt A (bytes) | Opt A % | Opt B (bytes) | Opt B % | Opt C (bytes) | Opt C % |
-|---|---|---|---|---|---|---|---|
-| Variable | 3 | 18 | 83% | 20 | 75% | 19 | 79% |
-| Variable | 5 | 30 | 83% | 30 | 83% | 29 | 86% |
-| Variable | 7 | 42 | 83% | 40 | 88% | 39 | 90% |
-| Static (max=7) | 3 | 42 | 36% | 40 | 38% | 39 | 38% |
-| Static (max=7) | 5 | 42 | 60% | 40 | 63% | 39 | 64% |
-| Static (max=7) | 7 | 42 | 83% | 40 | 88% | 39 | 90% |
-
-### 9-byte fields (1B key + 8B value)
-
-| Layout | Avg fields | Opt A (bytes) | Opt A % | Opt B (bytes) | Opt B % | Opt C (bytes) | Opt C % |
-|---|---|---|---|---|---|---|---|
-| Variable | 3 | 30 | 90% | 36 | 75% | 31 | 87% |
-| Variable | 5 | 50 | 90% | 54 | 83% | 49 | 92% |
-| Variable | 7 | 70 | 90% | 72 | 88% | 67 | 94% |
-| Static (max=7) | 3 | 70 | 39% | 72 | 38% | 67 | 40% |
-| Static (max=7) | 5 | 70 | 64% | 72 | 63% | 67 | 67% |
-| Static (max=7) | 7 | 70 | 90% | 72 | 88% | 67 | 94% |
-
-Key observations:
-- Static records drop to ~38% efficiency when avg fill is 3/7 — the layout choice matters far more than the overhead option
-- Variable records are 75–94% efficient regardless of avg fields
-- Option A is constant efficiency per field size (independent of record size)
-- Option B gets more efficient as records get larger (header cost amortized)
-- Option C beats Option B for small records; loses at large records when value size is small
-
----
-
-## Decisions
-
-| Decision | Choice | Reason |
-|---|---|---|
-| Record layout | **Variable-length** | No wasted space; static never outperforms variable |
-| Overhead scheme | **Option B** — one header field per record | CRC covers whole record; header-last write gives crash safety naturally |
-
----
-
-## Open Design Questions
-
-- What does the header field contain exactly? (CRC algorithm, size, other flags?)
-- What is the record start marker / magic value?
-- How does the iterator API look in C?
-- Thread-safety mechanism: mutex, critical section, or caller-provided lock?
-- How are sectors managed — who erases, and when?
-
----
-
-## Parked ideas (Bas, 2026-07-06 discussion)
-
-Noted here because LogBook.md is Bas-only; fold in / correct as needed.
-
-- **Layering intent (naming resolved 2026-07-06: keep Record/Field):**
-  Fields stay simple and dumb (the existing FieldStore); Records — the
-  influx-like points made of Fields — are where the hard part lives.
-- **Iterator:** caller-owned handle (same ownership idiom as the rest)
-  used to read items; whatever sync/mutex story exists lives with the
-  caller/wrapper, not inside the library core.
-- **Overwrite/read validity:** an entry handle stores a hash of the
-  records it spawned; on a later read or overwrite (clear-bits-only)
-  the hash reveals whether the ring has since lapped/invalidated it.
-  (Extends the LogBook's "indexer with a valid state / store a CRC"
-  note.)
-- **Deferred use case — handled-flags:** the application dedicates one
-  key/value pair per entry as a flags field; a service iterates
-  entries, performs a task (e.g. ship logs to a server), then clears
-  bits to mark it handled. Pure application convention on top of
-  Overwrite — the library only guarantees clear-bits-only writes.
-
----
+- [architecture.md](docs/architecture.md) — the two-layer design
+- [flash-format.md](docs/flash-format.md) — on-flash byte layout
+- [roadmap.md](docs/roadmap.md) — milestones and remaining work
+- [efficiency-analysis.md](docs/efficiency-analysis.md) — why
+  variable-length + Option B
+- [ideas/](docs/ideas/) — open design decisions and parked ideas
+- [backlog/](docs/backlog/) — per-item work notes
