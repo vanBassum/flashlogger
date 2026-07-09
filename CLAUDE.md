@@ -6,6 +6,25 @@
 - **Strict TDD.** A failing test must exist before any implementation change. Never add a method, member, or constructor parameter without a failing test that requires it.
 - **Minimal effort.** Only add what the current failing test demands. No speculative members, no future-proofing.
 - **LogBook.md is read-only.** The user writes to it, Claude only reads.
+- **Keep the docs current.** `docs/` is the source of truth for design, layout, and plan. When a change affects any of them, update the relevant doc in the same change (before committing) — see Documentation below. Never let code and docs drift.
+
+## Documentation
+
+`docs/` holds the authoritative design/reference; the tables below in
+this file are a quick summary only. When a change touches one of these
+concerns, update the matching doc in the same change:
+
+| Doc | Owns | Update when… |
+|---|---|---|
+| `docs/architecture.md` | layer structure & responsibilities | layers/HAL change |
+| `docs/flash-format.md` | on-flash byte layout | header/field/record encoding changes |
+| `docs/efficiency-analysis.md` | why variable-length + Option B | a layout/overhead decision changes |
+| `docs/roadmap.md` | milestones & remaining work | a milestone is started/finished, or scope shifts |
+| `docs/ideas/design-decisions.md` | open decisions (Bas's to make) | a decision is made (move it out of "open") or a new one appears |
+| `docs/ideas/parked-ideas.md` | deferred ideas | an idea is parked or picked up |
+| `docs/backlog/*.md` | per-item work notes | working on / completing an item |
+
+`docs/LogBook.md` is Bas-only — read, never write.
 
 ## Build & test
 
