@@ -34,7 +34,11 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Always run tests after every implementation change. Commit only when all tests pass.
+Always run tests after every implementation change.
+
+**Always commit and push.** Don't leave work uncommitted. For code,
+commit once all tests pass; for docs and reasoning notes, commit and
+push directly. Every commit is pushed to the remote in the same step.
 
 ## Constraints
 

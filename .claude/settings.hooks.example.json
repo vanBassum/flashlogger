@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check whether a real decision, trade-off resolution, adopted assumption, or corrected earlier belief occurred THIS turn.\n- If YES: invoke the reasoning-note skill and offer a one-paragraph note (why + rejected alternatives + one-line decision); if the WHY wasn't stated, ask for it rather than inventing one.\n- If NO: output NOTHING AT ALL. No acknowledgement, no 'No action needed', no summary. Stay completely silent.\nOnly produce visible output when you are actually offering or writing a note."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "If docs/reasoning/ exists, read the notes in it (all of them if they fit) so prior decisions and their rationale are in context before work begins."
+          }
+        ]
+      }
+    ]
+  }
+}
