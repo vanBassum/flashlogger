@@ -218,6 +218,33 @@ TEST(FieldStore, multi_byte_key_round_trips_little_endian) {
     EXPECT_EQ(val_out[3], 0xEF);
 }
 
+// A fresh FieldStore over the same flash reads the existing format and data,
+// as it would after a reboot (in-RAM store gone, flash contents persist).
+TEST(FieldStore, reopening_reads_existing_format_and_data) {
+    RamFlash<4096, 256> flash;
+    {
+        FieldStore store(flash);
+        ASSERT_EQ(store.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(store.init(),       FlashLogError::OK);
+        uint8_t v[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+        ASSERT_EQ(store.write(0, 0x07, v), FlashLogError::OK);
+    }
+
+    FieldStore reopened(flash);  // same flash contents, new store
+    EXPECT_EQ(reopened.init(),      FlashLogError::OK);
+    EXPECT_EQ(reopened.keySize(),   1);
+    EXPECT_EQ(reopened.valueSize(), 4);
+
+    uint8_t key_out = 0;
+    uint8_t val_out[4] = {0};
+    EXPECT_EQ(reopened.read(0, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x07);
+    EXPECT_EQ(val_out[0], 0xDE);
+    EXPECT_EQ(val_out[1], 0xAD);
+    EXPECT_EQ(val_out[2], 0xBE);
+    EXPECT_EQ(val_out[3], 0xEF);
+}
+
 // Clearing the second erase-unit erases the fields there and leaves the first
 // unit intact. Expressed with the exposed unit size, not a hardcoded layout.
 TEST(FieldStore, clear_erases_the_second_unit) {
