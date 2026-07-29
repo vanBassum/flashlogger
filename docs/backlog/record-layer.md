@@ -16,7 +16,13 @@ _Placeholder. This is the bulk of the project (M2)._
   (scribble at a flash address, check it reads `0xFF`) was written and then
   removed: it inspected flash internals from the record layer and asserted
   "somebody erased" rather than "the log is empty". Write the real one once
-  write/read exist.
+  write/read exist. Two scenarios, the second being the one that actually
+  bites — build the failure, then show the wipe fixes it:
+  1. append records → `format()` → iterate finds nothing.
+  2. append records → `format()` → append *one* record → iterate finds exactly
+     that one. Without the wipe, the append point is found past the stale data
+     (the frontier is structural — written bytes vs `0xFF`), so the fresh
+     record lands after a field of leftovers and iteration sees garbage.
 - **Does a *rejected* `format()` erase?** Today it does — the erase runs before
   the field layer validates the sizes, so `format(0, 4)` wipes the store and
   then returns `ARG_INVALID`. Untested and undecided; see

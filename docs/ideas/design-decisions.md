@@ -12,6 +12,11 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   / [structural-not-powerfail](../reasoning/2026-07-28-16h37-per-sector-headers-are-structural-not-powerfail.md).
 - **Append cursor → record layer.** The field layer is index-addressed and
   holds no cursor.
+- **A record is a list of key/value pairs (2026-07-29).** One log entry carries
+  several tagged values at once (temperature *and* humidity), each pair becoming
+  one Field — not one key with a long payload. The exact API shape (signature,
+  the pair type, naming, whether append buffers or streams) is Bas's and is
+  being designed directly.
 - **`RecordLog::format` wipes the store (2026-07-29).** It erases every sector
   and then writes the header — always, no questions asked. No refuse-if-formatted
   guard. Reason: the append point is found structurally (the frontier between
