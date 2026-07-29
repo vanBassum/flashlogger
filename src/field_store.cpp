@@ -4,19 +4,26 @@
 
 static constexpr uint32_t MAGIC = 0x464C4F47;
 
-static constexpr size_t HEADER_SIZE = 8;
+static constexpr size_t HEADER_SIZE    = 8;
+static constexpr size_t HEADER_CRC_LEN = HEADER_SIZE - 2;  // magic + sizes; CRC covers these
+static constexpr size_t MAX_VALUE_SIZE = 255;              // value_size is stored in a uint8_t
+
+static void encode_u32_le(uint8_t* p, uint32_t v)
+{
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+    p[2] = static_cast<uint8_t>(v >> 16);
+    p[3] = static_cast<uint8_t>(v >> 24);
+}
 
 static void encode_header(uint8_t buf[HEADER_SIZE], uint8_t key_size, uint8_t value_size)
 {
-    buf[0] = static_cast<uint8_t>(MAGIC);
-    buf[1] = static_cast<uint8_t>(MAGIC >> 8);
-    buf[2] = static_cast<uint8_t>(MAGIC >> 16);
-    buf[3] = static_cast<uint8_t>(MAGIC >> 24);
+    encode_u32_le(buf, MAGIC);
     buf[4] = key_size;
     buf[5] = value_size;
-    uint16_t crc = crc16(buf, 6);
-    buf[6] = static_cast<uint8_t>(crc);
-    buf[7] = static_cast<uint8_t>(crc >> 8);
+    uint16_t crc = crc16(buf, HEADER_CRC_LEN);
+    buf[HEADER_CRC_LEN]     = static_cast<uint8_t>(crc);
+    buf[HEADER_CRC_LEN + 1] = static_cast<uint8_t>(crc >> 8);
 }
 
 static uint32_t decode_u32_le(const uint8_t* p)
@@ -57,7 +64,7 @@ static uint32_t address_of_field(uint32_t index, size_t field_size, size_t secto
 
 FlashLogError FieldStore::format(size_t key_size, size_t value_size)
 {
-    if (key_size == 0 || value_size == 0 || key_size > 4 || value_size > 255)
+    if (key_size == 0 || value_size == 0 || key_size > 4 || value_size > MAX_VALUE_SIZE)
         return FlashLogError::ARG_INVALID;
     if (key_size + value_size > flash_.getSectorSize() - HEADER_SIZE)
         return FlashLogError::ARG_INVALID;
@@ -82,8 +89,8 @@ FlashLogError FieldStore::init()
     if (magic != MAGIC)
         return FlashLogError::FORMAT_CORRUPT;
 
-    uint16_t expected = crc16(buf, 6);
-    if (decode_u16_le(buf + 6) != expected)
+    uint16_t expected = crc16(buf, HEADER_CRC_LEN);
+    if (decode_u16_le(buf + HEADER_CRC_LEN) != expected)
         return FlashLogError::FORMAT_CORRUPT;
 
     key_size_     = buf[4];
@@ -111,10 +118,7 @@ FlashLogError FieldStore::write(uint32_t index, uint32_t key, const void* value)
     uint32_t field_address = address_of_field(index, field_size, sector_size);
 
     uint8_t key_bytes[4];
-    key_bytes[0] = static_cast<uint8_t>(key);
-    key_bytes[1] = static_cast<uint8_t>(key >> 8);
-    key_bytes[2] = static_cast<uint8_t>(key >> 16);
-    key_bytes[3] = static_cast<uint8_t>(key >> 24);
+    encode_u32_le(key_bytes, key);
 
     flash_.write(field_address, key_bytes, key_size_, 0);
     flash_.write(field_address + key_size_, value, value_size_, 0);
@@ -124,7 +128,7 @@ FlashLogError FieldStore::write(uint32_t index, uint32_t key, const void* value)
     if (memcmp(key_readback, key_bytes, key_size_) != 0)
         return FlashLogError::FLASH_WRITE_ERROR;
 
-    uint8_t value_readback[256];
+    uint8_t value_readback[MAX_VALUE_SIZE];
     flash_.read(field_address + key_size_, value_readback, value_size_, 0);
     if (memcmp(value_readback, value, value_size_) != 0)
         return FlashLogError::FLASH_WRITE_ERROR;
