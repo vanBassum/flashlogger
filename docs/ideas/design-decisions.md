@@ -17,8 +17,13 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   records would interleave on flash. So a record must be closed before the next
   opens, and while one is open `WriteRecord()` refuses — `field()` on that handle
   returns `RECORD_ALREADY_OPEN`. Chosen over the earlier sketch where the *older*
-  handle went stale: nothing a caller holds ever dies under it. Closing is meant
-  to be RAII (the destructor catches a missing `close()`) — not built yet.
+  handle went stale: nothing a caller holds ever dies under it. A record ends
+  with `close()` or the destructor — both, deliberately: the destructor is the
+  safety net for a forgotten close, and the explicit call is the only one that
+  can *report* a failure, since eventually closing writes the CRC and a
+  destructor has nowhere to put an error. `close()` is idempotent. Kept the name
+  `close()` over `commit()` for handle-like familiarity, though `commit()`
+  describes the CRC back-fill more honestly.
 - **Reserved key values scale with key width (2026-07-29).** Empty is all-ones
   for the key width (`0xFF` at 1 byte, `0xFFFFFFFF` at 4), tombstone is `0`,
   record-start is `1`. The point is to use the flash's own states, so a plain

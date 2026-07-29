@@ -15,24 +15,21 @@ static constexpr uint32_t empty_key(uint8_t key_size)
     return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
 }
 
+class RecordLog;
+
 // Handle for the record currently being written. Name provisional.
+// Holds no cursor of its own — the log owns the append position.
 class RecordWriter {
 public:
-    RecordWriter(FieldStore& store, bool open) : store_(store), open_(open) {}
+    // A null log means the handle was refused: a record was already open.
+    RecordWriter(RecordLog* log) : log_(log) {}
+    ~RecordWriter();
 
-    FlashLogError field(uint32_t key, const void* value)
-    {
-        if (!open_)
-            return FlashLogError::RECORD_ALREADY_OPEN;
-        if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
-            return FlashLogError::ARG_INVALID;
-        return store_.write(next_index_++, key, value);
-    }
+    FlashLogError field(uint32_t key, const void* value);
+    FlashLogError close();
 
 private:
-    FieldStore& store_;
-    bool        open_;
-    uint32_t    next_index_ = 0;
+    RecordLog* log_;
 };
 
 class RecordLog {
@@ -46,9 +43,9 @@ public:
     RecordWriter WriteRecord()
     {
         if (record_open_)
-            return RecordWriter(store_, false);
+            return RecordWriter(nullptr);
         record_open_ = true;
-        return RecordWriter(store_, true);
+        return RecordWriter(this);
     }
 
     // A format wipes the store: every sector is erased, then the header written.
@@ -61,7 +58,39 @@ public:
     }
 
 private:
+    friend class RecordWriter;
+
+    FlashLogError writeField(uint32_t key, const void* value)
+    {
+        if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
+            return FlashLogError::ARG_INVALID;
+        return store_.write(next_index_++, key, value);
+    }
+
+    void closeRecord() { record_open_ = false; }
+
     IFlash&    flash_;
     FieldStore store_;
     bool       record_open_ = false;
+    uint32_t   next_index_  = 0;
 };
+
+inline RecordWriter::~RecordWriter() { close(); }
+
+inline FlashLogError RecordWriter::field(uint32_t key, const void* value)
+{
+    if (!log_)
+        return FlashLogError::RECORD_ALREADY_OPEN;
+    return log_->writeField(key, value);
+}
+
+// Dropping the log makes close() idempotent, so the destructor after an
+// explicit close() is a no-op.
+inline FlashLogError RecordWriter::close()
+{
+    if (!log_)
+        return FlashLogError::RECORD_ALREADY_OPEN;
+    log_->closeRecord();
+    log_ = nullptr;
+    return FlashLogError::OK;
+}

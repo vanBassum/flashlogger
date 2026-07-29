@@ -57,10 +57,12 @@ wipes the store. `WriteRecord()` hands back a `RecordWriter` (name
 provisional) whose `field(key, value)` writes one Field. Fields go straight
 to flash — nothing is buffered in RAM — so only one record may be open at a
 time: while one is open, `WriteRecord()` hands back a refused handle whose
-`field()` returns `RECORD_ALREADY_OPEN`. No start marker and no CRC yet —
-nothing has asked for them — and `close()`/RAII does not exist, so the open
-flag never clears and the write cursor still lives in the writer. Everything
-below is the target, not the current state.
+`field()` returns `RECORD_ALREADY_OPEN`. A record ends via `close()` or,
+failing that, the destructor; `close()` is idempotent, and the explicit form
+exists because a destructor cannot report the error that back-filling a CRC
+will one day be able to raise. The append cursor lives in `RecordLog`, not
+the handle. No start marker and no CRC yet — nothing has asked for them.
+Everything below is the target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive

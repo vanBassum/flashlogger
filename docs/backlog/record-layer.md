@@ -28,6 +28,14 @@ _Placeholder. This is the bulk of the project (M2)._
   on trust, because there is no way to read a record back yet. Same for the
   reserved-key rejections — nothing proves a rejected `field()` wrote nothing and
   left the cursor alone. Tighten both once reading exists.
+- **Writing to a closed record reports `RECORD_ALREADY_OPEN`.** After
+  `close()`, the handle drops its log pointer, so a later `field()` reports the
+  same error as a refused handle — misleading wording ("already open" for a
+  record that is closed). Needs either a second error value (`RECORD_CLOSED`) or
+  a decision that one value is enough. Untested either way.
+- **Copying a `RecordWriter` would close the record twice.** Return-by-value from
+  `WriteRecord()` is elided so it does not bite today, but nothing forbids a copy.
+  Deleting the copy constructor is the obvious fix — no test demands it yet.
 - **Does a *rejected* `format()` erase?** Today it does — the erase runs before
   the field layer validates the sizes, so `format(0, 4)` wipes the store and
   then returns `ARG_INVALID`. Untested and undecided; see
