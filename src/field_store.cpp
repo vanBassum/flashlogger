@@ -173,8 +173,8 @@ FlashLogError FieldStore::clear(uint32_t first_field, uint32_t field_count)
     return FlashLogError::OK;
 }
 
-uint8_t FieldStore::key_size() const   { return key_size_; }
-uint8_t FieldStore::value_size() const { return value_size_; }
+uint8_t FieldStore::keySize() const   { return key_size_; }
+uint8_t FieldStore::valueSize() const { return value_size_; }
 
 uint32_t FieldStore::fieldsPerUnit() const
 {

@@ -47,8 +47,8 @@ TEST(FieldStore, format_returns_invalid_argument_for_zero_value_size) {
 TEST(FieldStore, key_size_and_value_size_return_zero_before_init) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);
-    EXPECT_EQ(store.key_size(), 0);
-    EXPECT_EQ(store.value_size(), 0);
+    EXPECT_EQ(store.keySize(), 0);
+    EXPECT_EQ(store.valueSize(), 0);
 }
 
 TEST(FieldStore, fields_per_unit_returns_zero_before_init) {
@@ -62,8 +62,8 @@ TEST(FieldStore, key_size_and_value_size_reflect_format_after_init) {
     FieldStore store(flash);
     store.format(2, 8);
     store.init();
-    EXPECT_EQ(store.key_size(), 2);
-    EXPECT_EQ(store.value_size(), 8);
+    EXPECT_EQ(store.keySize(), 2);
+    EXPECT_EQ(store.valueSize(), 8);
 }
 
 
