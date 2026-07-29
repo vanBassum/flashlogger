@@ -64,12 +64,21 @@ decided. Open points:
 
 - **Record header field** — contents (CRC algorithm & width, field
   count vs byte length, flags), written last for crash safety.
-- **Record start marker / reserved keys** — `0xFF` = empty, `0x00` =
-  erased, `0x01` = record start (a record-layer concern, not
-  field-layer). How a record's start is recognized. Enforced so far:
-  `RecordWriter::field()` rejects all three with `ARG_INVALID`, so user
-  data can never look like framing. Values are the leaning set and apply
-  to 1-byte keys; multi-byte reserved values are still undecided.
+- **Record start marker / reserved keys** — a record-layer concern; the
+  field layer stores keys opaquely. The values exploit the flash's own
+  states and so are **relative to the key width**:
+
+  | Reserved | 1-byte key | 4-byte key | Meaning |
+  |---|---|---|---|
+  | empty | `0xFF` | `0xFFFFFFFF` | never written (erased state) |
+  | tombstone | `0x00` | `0x00000000` | every bit cleared |
+  | record start | `0x01` | `0x00000001` | marker / header field |
+
+  Enforced so far: `RecordWriter::field()` rejects all three with
+  `ARG_INVALID`, so user data can never look like framing. Because empty
+  is all-ones for the width, a plain `0xFF` is a perfectly legal user key
+  once keys are 4 bytes wide. Still open: how a record's start is
+  recognized during iteration.
 - **Long values** — stored by repeating the same key across
   consecutive Fields.
 

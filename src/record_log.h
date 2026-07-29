@@ -4,11 +4,16 @@
 #include "flashlog_error.h"
 
 // Key values the record layer keeps for itself; the field layer stores keys
-// opaquely and knows nothing of these. Values are the leaning set, not locked,
-// and are 1-byte-key values — multi-byte keys are still undecided.
-static constexpr uint32_t KEY_EMPTY  = 0xFF;  // never written
-static constexpr uint32_t KEY_ERASED = 0x00;  // tombstone
+// opaquely and knows nothing of these. They exploit the flash's own states, so
+// "empty" is all-ones for the key width — with 4-byte keys that is 0xFFFFFFFF
+// and a plain 0xFF is ordinary user data.
+static constexpr uint32_t KEY_ERASED = 0x00;  // tombstone: every bit cleared
 static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
+
+static constexpr uint32_t empty_key(uint8_t key_size)
+{
+    return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
+}
 
 // Handle for the record currently being written. Name provisional.
 class RecordWriter {
@@ -17,7 +22,7 @@ public:
 
     FlashLogError field(uint32_t key, const void* value)
     {
-        if (key == KEY_EMPTY || key == KEY_ERASED || key == KEY_MARKER)
+        if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
             return FlashLogError::ARG_INVALID;
         return store_.write(next_index_++, key, value);
     }

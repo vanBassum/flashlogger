@@ -26,7 +26,7 @@ TEST(RecordLog, a_record_takes_a_field) {
     EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
 }
 
-TEST(RecordLog, a_field_cannot_use_a_reserved_key) {
+TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_one_byte_keys) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);
     ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
@@ -37,6 +37,32 @@ TEST(RecordLog, a_field_cannot_use_a_reserved_key) {
     EXPECT_EQ(record.field(0xFF, &value), FlashLogError::ARG_INVALID);  // empty
     EXPECT_EQ(record.field(0x00, &value), FlashLogError::ARG_INVALID);  // tombstone
     EXPECT_EQ(record.field(0x01, &value), FlashLogError::ARG_INVALID);  // record start
+}
+
+TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_four_byte_keys) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(4, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.WriteRecord();
+    EXPECT_EQ(record.field(0xFFFFFFFF, &value), FlashLogError::ARG_INVALID);  // empty
+    EXPECT_EQ(record.field(0x00000000, &value), FlashLogError::ARG_INVALID);  // tombstone
+    EXPECT_EQ(record.field(0x00000001, &value), FlashLogError::ARG_INVALID);  // record start
+}
+
+// "Empty" is all-ones for the key width, so a narrower all-ones value is
+// ordinary user data once keys are wider.
+TEST(RecordLog, reserved_keys_scale_with_key_width) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(4, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.WriteRecord();
+    EXPECT_EQ(record.field(0xFF, &value), FlashLogError::OK);
 }
 
 TEST(RecordLog, a_rejected_format_leaves_the_store_unformatted) {

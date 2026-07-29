@@ -12,6 +12,11 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   / [structural-not-powerfail](../reasoning/2026-07-28-16h37-per-sector-headers-are-structural-not-powerfail.md).
 - **Append cursor → record layer.** The field layer is index-addressed and
   holds no cursor.
+- **Reserved key values scale with key width (2026-07-29).** Empty is all-ones
+  for the key width (`0xFF` at 1 byte, `0xFFFFFFFF` at 4), tombstone is `0`,
+  record-start is `1`. The point is to use the flash's own states, so a plain
+  `0xFF` is ordinary user data once keys are 4 bytes wide. Closes the
+  "exact values for multi-byte keys TBD" part of the framing note.
 - **A record is a list of key/value pairs (2026-07-29).** One log entry carries
   several tagged values at once (temperature *and* humidity), each pair becoming
   one Field — not one key with a long payload. The exact API shape (signature,
