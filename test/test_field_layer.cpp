@@ -88,6 +88,16 @@ TEST(FieldStore, format_returns_invalid_when_field_larger_than_sector) {
     EXPECT_EQ(store.format(1, 8), FlashLogError::ARG_INVALID);  // field_size 9 > 8
 }
 
+// The maximum key (4) and value (255) sizes are accepted when they fit.
+TEST(FieldStore, format_accepts_max_key_and_value_sizes) {
+    RamFlash<8192, 4096> flash;   // usable 4088 bytes, fits a 259-byte field
+    FieldStore store(flash);
+    EXPECT_EQ(store.format(4, 255), FlashLogError::OK);
+    EXPECT_EQ(store.init(),         FlashLogError::OK);
+    EXPECT_EQ(store.keySize(),      4);
+    EXPECT_EQ(store.valueSize(),    255);
+}
+
 TEST(FieldStore, write_returns_not_initialized_before_init) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);
