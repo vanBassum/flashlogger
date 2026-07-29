@@ -45,7 +45,11 @@ fixed-size Field placement; hides sector math from callers.
 - No threading — the caller's responsibility.
 - No knowledge of Records, CRC-over-records, or what a key means.
 
-## Record layer — on top of Fields (not yet built)
+## Record layer — on top of Fields (in progress)
+
+Being built test-first; only what a test demanded exists so far —
+`RecordLog(FieldStore&)` and `init()`, which mounts by forwarding to the
+field layer. Everything below is the target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive
