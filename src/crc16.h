@@ -3,9 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
-inline uint16_t crc16(const uint8_t* data, size_t len)
+inline uint16_t crc16_init() { return 0xFFFF; }
+
+inline uint16_t crc16_update(uint16_t crc, const uint8_t* data, size_t len)
 {
-    uint16_t crc = 0xFFFF;
     for (size_t i = 0; i < len; i++) {
         crc ^= (uint16_t)data[i] << 8;
         for (int j = 0; j < 8; j++) {
@@ -13,4 +14,10 @@ inline uint16_t crc16(const uint8_t* data, size_t len)
         }
     }
     return crc;
+}
+
+// One-shot convenience wrapper (unchanged output).
+inline uint16_t crc16(const uint8_t* data, size_t len)
+{
+    return crc16_update(crc16_init(), data, len);
 }
