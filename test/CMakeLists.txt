@@ -11,7 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(test_flashlogger
     test_field_layer.cpp
-    test_record_codec.cpp
+    test_record_log.cpp
 )
 target_link_libraries(test_flashlogger
     PRIVATE flashlogger GTest::gtest_main
