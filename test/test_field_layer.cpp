@@ -355,6 +355,30 @@ TEST(FieldStore, clear_rejects_count_that_overflows_range) {
     EXPECT_EQ(store.clear(n, 0xFFFFFFFE), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
+// After clearing a unit, fresh fields can be written into it again — the
+// clear truly returns the flash to a writable (0xFF) state.
+TEST(FieldStore, can_write_into_a_cleared_unit) {
+    RamFlash<32, 16> flash;
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint32_t n = store.fieldsPerUnit();
+
+    uint8_t v1[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(n, 0x03, v1), FlashLogError::OK);  // write unit 1
+    EXPECT_EQ(store.clear(n, n),        FlashLogError::OK);  // clear it
+
+    uint8_t v2[2] = {0x11, 0x22};
+    EXPECT_EQ(store.write(n, 0x05, v2), FlashLogError::OK);  // rewrite after clear
+
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(n, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x05);
+    EXPECT_EQ(val_out[0], 0x11);
+    EXPECT_EQ(val_out[1], 0x22);
+}
+
 
 
 
