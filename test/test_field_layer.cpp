@@ -308,6 +308,18 @@ TEST(FieldStore, clear_returns_out_of_bounds_when_range_exceeds_store) {
     EXPECT_EQ(store.clear(2 * n, 2 * n), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
+// A whole-unit count so large that first_field + field_count overflows must
+// still be rejected, not wrap past the bounds check.
+TEST(FieldStore, clear_rejects_count_that_overflows_range) {
+    RamFlash<48, 16> flash;   // 3 erase-units
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint32_t n = store.fieldsPerUnit();
+    // aligned start, whole-unit count that wraps uint32 when added to it.
+    EXPECT_EQ(store.clear(n, 0xFFFFFFFE), FlashLogError::ARG_OUT_OF_BOUNDS);
+}
+
 
 
 
