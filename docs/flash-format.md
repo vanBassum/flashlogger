@@ -22,8 +22,9 @@ Written by `format()`, validated by `init()`. Lives in the reserved top
 
 - `init()` reads 8 bytes: magic all-`0xFF` → `FORMAT_MISSING`; wrong
   magic or bad CRC → `FORMAT_CORRUPT`.
-- Constraints enforced by `format()`: `key_size` in 1..4,
-  `value_size` non-zero.
+- Constraints enforced by `format()`: `key_size` in 1..4, `value_size`
+  in 1..255, and the field (`key_size + value_size`) must fit in a
+  sector's usable space (`sector_size − 8`).
 
 ## Field placement (decided, implemented)
 

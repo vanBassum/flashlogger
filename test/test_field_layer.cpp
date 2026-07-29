@@ -80,6 +80,14 @@ TEST(FieldStore, format_returns_invalid_argument_when_value_size_exceeds_255) {
     EXPECT_EQ(store.format(1, 256), FlashLogError::ARG_INVALID);
 }
 
+// A field that can't fit in a sector's usable space is rejected at format,
+// rather than silently producing a zero-capacity store.
+TEST(FieldStore, format_returns_invalid_when_field_larger_than_sector) {
+    RamFlash<32, 16> flash;   // usable per sector = 16 - 8 header = 8 bytes
+    FieldStore store(flash);
+    EXPECT_EQ(store.format(1, 8), FlashLogError::ARG_INVALID);  // field_size 9 > 8
+}
+
 TEST(FieldStore, write_returns_not_initialized_before_init) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);

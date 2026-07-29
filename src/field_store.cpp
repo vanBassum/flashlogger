@@ -59,6 +59,8 @@ FlashLogError FieldStore::format(size_t key_size, size_t value_size)
 {
     if (key_size == 0 || value_size == 0 || key_size > 4 || value_size > 255)
         return FlashLogError::ARG_INVALID;
+    if (key_size + value_size > flash_.getSectorSize() - HEADER_SIZE)
+        return FlashLogError::ARG_INVALID;
 
     uint8_t buf[HEADER_SIZE];
     encode_header(buf, static_cast<uint8_t>(key_size), static_cast<uint8_t>(value_size));
