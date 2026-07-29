@@ -197,6 +197,27 @@ TEST(FieldStore, read_retrieves_what_was_written) {
     EXPECT_EQ(value_out[3], 0xDD);
 }
 
+// A multi-byte key is stored little-endian and round-trips intact.
+TEST(FieldStore, multi_byte_key_round_trips_little_endian) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    store.format(2, 4);   // 2-byte key
+    store.init();
+
+    uint8_t value[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+    EXPECT_EQ(store.write(0, 0x1234, value), FlashLogError::OK);
+
+    uint8_t key_out[2] = {0};
+    uint8_t val_out[4] = {0};
+    EXPECT_EQ(store.read(0, key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out[0], 0x34);   // little-endian: low byte first
+    EXPECT_EQ(key_out[1], 0x12);
+    EXPECT_EQ(val_out[0], 0xDE);
+    EXPECT_EQ(val_out[1], 0xAD);
+    EXPECT_EQ(val_out[2], 0xBE);
+    EXPECT_EQ(val_out[3], 0xEF);
+}
+
 // Clearing the second erase-unit erases the fields there and leaves the first
 // unit intact. Expressed with the exposed unit size, not a hardcoded layout.
 TEST(FieldStore, clear_erases_the_second_unit) {
