@@ -51,6 +51,12 @@ TEST(FieldStore, key_size_and_value_size_return_zero_before_init) {
     EXPECT_EQ(store.value_size(), 0);
 }
 
+TEST(FieldStore, fields_per_unit_returns_zero_before_init) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    EXPECT_EQ(store.fieldsPerUnit(), 0u);
+}
+
 TEST(FieldStore, key_size_and_value_size_reflect_format_after_init) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);
@@ -82,9 +88,8 @@ TEST(FieldStore, write_returns_out_of_bounds_for_invalid_index) {
     store.format(1, 4);
     store.init();
     uint8_t value[4] = {0};
-    uint32_t total_fields = (4096 - 8) / 5 + 0;  // sector 0 only (1 sector)
-    // Actually 4096/256=16 sectors; sector0: (256-8)/5=49, others: 256/5=51 each
-    uint32_t out_of_range = 49 + 15 * 51;
+    // 16 sectors, each holding (256-8)/5 = 49 fields → 784 total.
+    uint32_t out_of_range = 16 * 49;  // first index past the last field
     EXPECT_EQ(store.write(out_of_range, 0x01, value), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
@@ -120,21 +125,25 @@ TEST(FieldStore, write_stores_key_and_value_at_index_one) {
     EXPECT_EQ(field[4], 0xDD);
 }
 
-// RamFlash<32,16>: sector_size=16, field_size=3 (key=1, value=2)
-// Sector 0: header at bytes 0-7, fields at 8-10 and 11-13, bytes 14-15 too small for another field
-// Sector 1: fields start at byte 16 — index 2 maps there
-TEST(FieldStore, write_places_field_correctly_across_sector_boundary) {
+// A field in the second erase-unit round-trips through write/read. Uses the
+// exposed unit size instead of a hardcoded address, so it doesn't care where
+// the unit physically sits.
+TEST(FieldStore, round_trips_a_field_in_the_second_unit) {
     RamFlash<32, 16> flash;
     FieldStore store(flash);
     store.format(1, 2);
     store.init();
+    uint32_t n = store.fieldsPerUnit();  // first field of the second unit
+
     uint8_t value[2] = {0xAA, 0xBB};
-    EXPECT_EQ(store.write(2, 0x03, value), FlashLogError::OK);
-    uint8_t field[3];
-    flash.read(16, field, 3, 0);
-    EXPECT_EQ(field[0], 0x03);
-    EXPECT_EQ(field[1], 0xAA);
-    EXPECT_EQ(field[2], 0xBB);
+    EXPECT_EQ(store.write(n, 0x03, value), FlashLogError::OK);
+
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(n, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x03);
+    EXPECT_EQ(val_out[0], 0xAA);
+    EXPECT_EQ(val_out[1], 0xBB);
 }
 
 TEST(FieldStore, read_returns_not_initialized_before_init) {
@@ -153,7 +162,7 @@ TEST(FieldStore, read_returns_out_of_bounds_for_invalid_index) {
     store.init();
     uint8_t key_out;
     uint8_t value_out[4];
-    uint32_t out_of_range = 49 + 15 * 51;
+    uint32_t out_of_range = 16 * 49;  // first index past the last field
     EXPECT_EQ(store.read(out_of_range, &key_out, value_out), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
@@ -174,32 +183,31 @@ TEST(FieldStore, read_retrieves_what_was_written) {
     EXPECT_EQ(value_out[3], 0xDD);
 }
 
-// clear() takes a field index and a count, mirroring how IFlash erases a
-// range rather than a named sector. RamFlash<32,16> with 1+2 byte fields
-// gives sector 0 = indices 0,1 and sector 1 = indices 2..6; clear(2,5)
-// covers exactly the fields in sector 1, leaving the header untouched.
-TEST(FieldStore, clear_erases_the_given_field_range) {
+// Clearing the second erase-unit erases the fields there and leaves the first
+// unit intact. Expressed with the exposed unit size, not a hardcoded layout.
+TEST(FieldStore, clear_erases_the_second_unit) {
     RamFlash<32, 16> flash;
     FieldStore store(flash);
     store.format(1, 2);
     store.init();
+    uint32_t n = store.fieldsPerUnit();
 
     uint8_t v0[2] = {0x11, 0x22};
-    uint8_t v2[2] = {0xAA, 0xBB};
-    EXPECT_EQ(store.write(0, 0x01, v0), FlashLogError::OK);  // index 0 (sector 0)
-    EXPECT_EQ(store.write(2, 0x03, v2), FlashLogError::OK);  // index 2 (sector 1)
+    uint8_t v1[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(0, 0x01, v0), FlashLogError::OK);  // unit 0
+    EXPECT_EQ(store.write(n, 0x03, v1), FlashLogError::OK);  // unit 1, first field
 
-    EXPECT_EQ(store.clear(2, 5), FlashLogError::OK);
+    EXPECT_EQ(store.clear(n, n), FlashLogError::OK);         // clear unit 1
 
-    // The cleared range reads back erased (0xFF).
+    // The cleared unit reads back erased (0xFF).
     uint8_t key_out = 0;
     uint8_t val_out[2] = {0};
-    EXPECT_EQ(store.read(2, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(store.read(n, &key_out, val_out), FlashLogError::OK);
     EXPECT_EQ(key_out,    0xFF);
     EXPECT_EQ(val_out[0], 0xFF);
     EXPECT_EQ(val_out[1], 0xFF);
 
-    // A field outside the cleared range survives.
+    // A field in the untouched first unit survives.
     EXPECT_EQ(store.read(0, &key_out, val_out), FlashLogError::OK);
     EXPECT_EQ(key_out,    0x01);
     EXPECT_EQ(val_out[0], 0x11);
@@ -259,8 +267,8 @@ TEST(FieldStore, clear_returns_out_of_bounds_for_invalid_index) {
     FieldStore store(flash);
     store.format(1, 4);
     store.init();
-    uint32_t out_of_range = 49 + 15 * 51;  // first index past the last sector
-    EXPECT_EQ(store.clear(out_of_range, 51), FlashLogError::ARG_OUT_OF_BOUNDS);
+    uint32_t out_of_range = 16 * 49;  // first index past the last field
+    EXPECT_EQ(store.clear(out_of_range, 49), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
 

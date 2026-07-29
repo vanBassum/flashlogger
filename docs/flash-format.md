@@ -10,8 +10,8 @@ bits (1→0), erase resets a whole sector to `0xFF`.
 
 ## Field-layer header (decided, implemented)
 
-Written by `format()`, validated by `init()`. Lives at offset 0 of
-sector 0.
+Written by `format()`, validated by `init()`. Lives in the reserved top
+8 bytes of sector 0.
 
 | Offset | Size | Field |
 |--------|------|-------|
@@ -33,16 +33,24 @@ index-addressed.
 
 - Fields never span a sector boundary; the tail bytes of a sector too
   small for one more Field are wasted.
-- **Sector 0** reserves the first 8 bytes for the header; the rest holds
-  `floor((sector_size − 8) / field_size)` Fields.
-- **Sectors 1..N** hold `floor(sector_size / field_size)` Fields each.
+- **Every sector reserves the first 8 bytes** for a header, so all
+  sectors hold the same number of Fields:
+  `floor((sector_size − 8) / field_size)` — the erase-unit size, exposed
+  as `fieldsPerUnit()`. This uniformity is why `clear()` needs no special
+  case for sector 0.
+- Sector 0's reserved bytes hold the real format header. Sectors 1..N
+  leave theirs erased (`0xFF`) for now — duplicate/per-sector headers are
+  a later, currently-untested feature; the space is reserved so adding
+  them needs no layout change.
 - `write()` writes key then value, then reads both back and fails with
   `FLASH_WRITE_ERROR` on mismatch (so a plain rewrite fails by design —
   clearing bits is a separate `overwrite()` primitive, TBD).
+- `clear(first_field, field_count)` erases whole erase-units only; the
+  range must be aligned to `fieldsPerUnit()`, else `ARG_INVALID`.
 
 ```
-Sector 0:  [ 8B header ][ field 0 ][ field 1 ] ... [ field k ][ waste ]
-Sector 1:  [ field k+1 ][ field k+2 ]           ... [ field m ][ waste ]
+Sector 0:  [ 8B header  ][ field 0 ][ field 1 ] ... [ waste ]
+Sector 1:  [ 8B 0xFF gap][ field n ][ field n+1] ... [ waste ]
 ...
 ```
 
@@ -61,6 +69,8 @@ decided. Open points:
 
 ## Sector headers / sequencing — TBD
 
-Ties into the sector-0 problem: whether sectors carry small per-sector
-headers with sequence numbers for mount-recovery ordering, or the format
-header is handled another way.
+Every sector already reserves 8 bytes at its top; sector 0 uses them for
+the format header, the rest stay `0xFF`. Populating those reserved bytes
+with per-sector headers (magic, config, sequence numbers for
+mount-recovery ordering) is the deferred feature — no layout change
+needed when it lands.

@@ -16,6 +16,7 @@ public:
     FlashLogError clear(uint32_t first_field, uint32_t field_count);
     uint8_t key_size() const;
     uint8_t value_size() const;
+    uint32_t fieldsPerUnit() const;
 
 private:
     IFlash&  flash_;

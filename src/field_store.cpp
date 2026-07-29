@@ -42,19 +42,17 @@ static size_t fields_in_sector(size_t sector_usable_bytes, size_t field_size)
     return sector_usable_bytes / field_size;
 }
 
+// Every sector reserves HEADER_SIZE bytes at its top, so field placement is
+// uniform across all sectors (sector 0's reserved bytes hold the real header;
+// the others are left erased).
 static uint32_t address_of_field(uint32_t index, size_t field_size, size_t sector_size)
 {
-    size_t sector_zero_usable = sector_size - HEADER_SIZE;
-    size_t fields_in_sector_zero = fields_in_sector(sector_zero_usable, field_size);
-
-    if (index < fields_in_sector_zero)
-        return static_cast<uint32_t>(HEADER_SIZE + index * field_size);
-
-    uint32_t remaining = index - static_cast<uint32_t>(fields_in_sector_zero);
-    size_t fields_per_sector = fields_in_sector(sector_size, field_size);
-    uint32_t sector = 1 + remaining / static_cast<uint32_t>(fields_per_sector);
-    uint32_t offset = remaining % static_cast<uint32_t>(fields_per_sector);
-    return sector * static_cast<uint32_t>(sector_size) + offset * static_cast<uint32_t>(field_size);
+    size_t   per_sector = fields_in_sector(sector_size - HEADER_SIZE, field_size);
+    uint32_t sector     = index / static_cast<uint32_t>(per_sector);
+    uint32_t offset     = index % static_cast<uint32_t>(per_sector);
+    return sector * static_cast<uint32_t>(sector_size)
+         + HEADER_SIZE
+         + offset * static_cast<uint32_t>(field_size);
 }
 
 FlashLogError FieldStore::format(size_t key_size, size_t value_size)
@@ -94,8 +92,7 @@ FlashLogError FieldStore::init()
     size_t sector_size   = flash_.getSectorSize();
     size_t total_sectors = flash_.getSize() / sector_size;
     total_fields_ = static_cast<uint32_t>(
-        fields_in_sector(sector_size - HEADER_SIZE, field_size) +
-        (total_sectors - 1) * fields_in_sector(sector_size, field_size));
+        total_sectors * fields_in_sector(sector_size - HEADER_SIZE, field_size));
 
     return FlashLogError::OK;
 }
@@ -159,32 +156,24 @@ FlashLogError FieldStore::clear(uint32_t first_field, uint32_t field_count)
 
     size_t field_size  = key_size_ + value_size_;
     size_t sector_size = flash_.getSectorSize();
+    size_t per_sector  = fields_in_sector(sector_size - HEADER_SIZE, field_size);
 
-    size_t fields_in_sector_zero = (sector_size - HEADER_SIZE) / field_size;
-    size_t fields_per_sector     = sector_size / field_size;
-
-    // Find the first index and field count of the sector that first_field
-    // would start; a clear must cover exactly one whole sector.
-    uint32_t sector_first_field;
-    uint32_t sector_field_count;
-    if (first_field < fields_in_sector_zero) {
-        sector_first_field = 0;
-        sector_field_count = static_cast<uint32_t>(fields_in_sector_zero);
-    } else {
-        uint32_t rem    = first_field - static_cast<uint32_t>(fields_in_sector_zero);
-        uint32_t sector = 1 + rem / static_cast<uint32_t>(fields_per_sector);
-        sector_first_field = static_cast<uint32_t>(fields_in_sector_zero) +
-                             (sector - 1) * static_cast<uint32_t>(fields_per_sector);
-        sector_field_count = static_cast<uint32_t>(fields_per_sector);
-    }
-
-    if (first_field != sector_first_field || field_count != sector_field_count)
+    // A clear must cover exactly one whole erase-unit.
+    if (first_field % per_sector != 0 || field_count != per_sector)
         return FlashLogError::ARG_INVALID;
 
-    uint32_t addr = address_of_field(first_field, field_size, sector_size);
-    flash_.erase(static_cast<uint32_t>((addr / sector_size) * sector_size), 0);
+    uint32_t sector = first_field / static_cast<uint32_t>(per_sector);
+    flash_.erase(sector * static_cast<uint32_t>(sector_size), 0);
     return FlashLogError::OK;
 }
 
 uint8_t FieldStore::key_size() const   { return key_size_; }
 uint8_t FieldStore::value_size() const { return value_size_; }
+
+uint32_t FieldStore::fieldsPerUnit() const
+{
+    size_t field_size = key_size_ + value_size_;
+    if (field_size == 0)
+        return 0;
+    return static_cast<uint32_t>(fields_in_sector(flash_.getSectorSize() - HEADER_SIZE, field_size));
+}
