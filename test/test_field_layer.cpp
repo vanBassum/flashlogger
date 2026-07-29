@@ -174,6 +174,37 @@ TEST(FieldStore, read_retrieves_what_was_written) {
     EXPECT_EQ(value_out[3], 0xDD);
 }
 
+// Clearing a sector erases the fields it holds, leaving other sectors intact.
+// RamFlash<32,16>: sector 0 = header + indices 0,1; sector 1 = indices 2..6.
+// Clears sector 1 so the header (in sector 0) is never touched.
+TEST(FieldStore, clear_sector_erases_fields_in_that_sector) {
+    RamFlash<32, 16> flash;
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+
+    uint8_t v0[2] = {0x11, 0x22};
+    uint8_t v2[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(0, 0x01, v0), FlashLogError::OK);  // sector 0
+    EXPECT_EQ(store.write(2, 0x03, v2), FlashLogError::OK);  // sector 1
+
+    EXPECT_EQ(store.clearSector(1), FlashLogError::OK);
+
+    // The field in the cleared sector reads back erased (0xFF).
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(2, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0xFF);
+    EXPECT_EQ(val_out[0], 0xFF);
+    EXPECT_EQ(val_out[1], 0xFF);
+
+    // The field in the untouched sector 0 survives.
+    EXPECT_EQ(store.read(0, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x01);
+    EXPECT_EQ(val_out[0], 0x11);
+    EXPECT_EQ(val_out[1], 0x22);
+}
+
 
 
 

@@ -150,5 +150,12 @@ FlashLogError FieldStore::read(uint32_t index, void* key_out, void* value_out)
     return FlashLogError::OK;
 }
 
+FlashLogError FieldStore::clearSector(uint32_t sector_index)
+{
+    size_t sector_size = flash_.getSectorSize();
+    flash_.erase(static_cast<uint32_t>(sector_index * sector_size), 0);
+    return FlashLogError::OK;
+}
+
 uint8_t FieldStore::key_size() const   { return key_size_; }
 uint8_t FieldStore::value_size() const { return value_size_; }
