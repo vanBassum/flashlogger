@@ -247,6 +247,22 @@ TEST(FieldStore, clear_returns_invalid_when_range_is_partial_sector) {
     EXPECT_EQ(val_out[1], 0xBB);
 }
 
+TEST(FieldStore, clear_returns_not_initialized_before_init) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    store.format(1, 4);
+    EXPECT_EQ(store.clear(0, 49), FlashLogError::STORE_NOT_INITIALIZED);
+}
+
+TEST(FieldStore, clear_returns_out_of_bounds_for_invalid_index) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    store.format(1, 4);
+    store.init();
+    uint32_t out_of_range = 49 + 15 * 51;  // first index past the last sector
+    EXPECT_EQ(store.clear(out_of_range, 51), FlashLogError::ARG_OUT_OF_BOUNDS);
+}
+
 
 
 
