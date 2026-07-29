@@ -74,6 +74,12 @@ TEST(FieldStore, format_returns_invalid_argument_when_key_size_exceeds_4) {
     EXPECT_EQ(store.format(5, 4), FlashLogError::ARG_INVALID);
 }
 
+TEST(FieldStore, format_returns_invalid_argument_when_value_size_exceeds_255) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    EXPECT_EQ(store.format(1, 256), FlashLogError::ARG_INVALID);
+}
+
 TEST(FieldStore, write_returns_not_initialized_before_init) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);

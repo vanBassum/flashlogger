@@ -57,7 +57,7 @@ static uint32_t address_of_field(uint32_t index, size_t field_size, size_t secto
 
 FlashLogError FieldStore::format(size_t key_size, size_t value_size)
 {
-    if (key_size == 0 || value_size == 0 || key_size > 4)
+    if (key_size == 0 || value_size == 0 || key_size > 4 || value_size > 255)
         return FlashLogError::ARG_INVALID;
 
     uint8_t buf[HEADER_SIZE];
