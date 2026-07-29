@@ -12,6 +12,10 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   / [structural-not-powerfail](../reasoning/2026-07-28-16h37-per-sector-headers-are-structural-not-powerfail.md).
 - **Append cursor → record layer.** The field layer is index-addressed and
   holds no cursor.
+- **Field layer is hidden (2026-07-29).** The consumer only ever touches
+  `RecordLog`: it owns a `FieldStore` by value and exposes its own
+  `format`/`init` that forward down. Nothing above the record layer
+  constructs a `FieldStore` or names a Field.
 - **Integrity → CRC per record, always on**, width derived from `valueSize`,
   verified by recompute-and-compare; edits clear the CRC to `0`. No stored
   length (records are marker-delimited). See the 2026-07-29 reasoning notes.

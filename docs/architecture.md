@@ -6,7 +6,7 @@ layer on top.
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Record layer          (not yet built)       │  Records = 1+ Fields.
+│  Record layer          (in progress)         │  Records = 1+ Fields.
 │  append / iterate / overwrite, CRC,          │  Crash-safe append,
 │  mount-recovery, circular reclaim            │  power-cycle recovery.
 ├─────────────────────────────────────────────┤
@@ -48,8 +48,11 @@ fixed-size Field placement; hides sector math from callers.
 ## Record layer — on top of Fields (in progress)
 
 Being built test-first; only what a test demanded exists so far —
-`RecordLog(FieldStore&)` and `init()`, which mounts by forwarding to the
-field layer. Everything below is the target, not the current state.
+`RecordLog(IFlash&)`, `format(key_size, value_size)` and `init()`, which
+forward to the field layer. `RecordLog` **owns** its `FieldStore` (by value,
+no allocation): the field layer is an internal detail, so a consumer
+constructs and formats a `RecordLog` and never names a Field. Everything
+below is the target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive

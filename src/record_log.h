@@ -5,10 +5,11 @@
 
 class RecordLog {
 public:
-    RecordLog(FieldStore& store) : store_(store) {}
+    RecordLog(IFlash& flash) : store_(flash) {}
 
     FlashLogError init() { return store_.init(); }
+    FlashLogError format(size_t key_size, size_t value_size) { return store_.format(key_size, value_size); }
 
 private:
-    FieldStore& store_;
+    FieldStore store_;
 };
