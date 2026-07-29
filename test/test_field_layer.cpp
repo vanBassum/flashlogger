@@ -271,6 +271,43 @@ TEST(FieldStore, clear_returns_out_of_bounds_for_invalid_index) {
     EXPECT_EQ(store.clear(out_of_range, 49), FlashLogError::ARG_OUT_OF_BOUNDS);
 }
 
+// clear() can span multiple whole erase-units in one call.
+TEST(FieldStore, clear_erases_multiple_units) {
+    RamFlash<48, 16> flash;   // 3 erase-units
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint32_t n = store.fieldsPerUnit();
+
+    uint8_t v[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(0,     0x01, v), FlashLogError::OK);  // unit 0
+    EXPECT_EQ(store.write(n,     0x02, v), FlashLogError::OK);  // unit 1
+    EXPECT_EQ(store.write(2 * n, 0x03, v), FlashLogError::OK);  // unit 2
+
+    EXPECT_EQ(store.clear(0, 2 * n), FlashLogError::OK);        // clear units 0 and 1
+
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(0, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out, 0xFF);
+    EXPECT_EQ(store.read(n, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out, 0xFF);
+    // unit 2 was outside the range and survives.
+    EXPECT_EQ(store.read(2 * n, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out, 0x03);
+}
+
+// A multi-unit range that runs past the end of the store is out of bounds.
+TEST(FieldStore, clear_returns_out_of_bounds_when_range_exceeds_store) {
+    RamFlash<48, 16> flash;   // 3 erase-units
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint32_t n = store.fieldsPerUnit();
+    // start at the last unit and ask for two — spills past the store
+    EXPECT_EQ(store.clear(2 * n, 2 * n), FlashLogError::ARG_OUT_OF_BOUNDS);
+}
+
 
 
 

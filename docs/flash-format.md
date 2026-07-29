@@ -45,8 +45,10 @@ index-addressed.
 - `write()` writes key then value, then reads both back and fails with
   `FLASH_WRITE_ERROR` on mismatch (so a plain rewrite fails by design —
   clearing bits is a separate `overwrite()` primitive, TBD).
-- `clear(first_field, field_count)` erases whole erase-units only; the
-  range must be aligned to `fieldsPerUnit()`, else `ARG_INVALID`.
+- `clear(first_field, field_count)` erases whole erase-units (one or
+  more); `first_field` and `field_count` must be multiples of
+  `fieldsPerUnit()` (else `ARG_INVALID`), and the range must lie within
+  the store (else `ARG_OUT_OF_BOUNDS`).
 
 ```
 Sector 0:  [ 8B header  ][ field 0 ][ field 1 ] ... [ waste ]

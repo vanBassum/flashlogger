@@ -158,12 +158,16 @@ FlashLogError FieldStore::clear(uint32_t first_field, uint32_t field_count)
     size_t sector_size = flash_.getSectorSize();
     size_t per_sector  = fields_in_sector(sector_size - HEADER_SIZE, field_size);
 
-    // A clear must cover exactly one whole erase-unit.
-    if (first_field % per_sector != 0 || field_count != per_sector)
+    // A clear must cover whole erase-units: aligned start, whole-unit count.
+    if (first_field % per_sector != 0 || field_count % per_sector != 0)
         return FlashLogError::ARG_INVALID;
+    if (first_field + field_count > total_fields_)
+        return FlashLogError::ARG_OUT_OF_BOUNDS;
 
-    uint32_t sector = first_field / static_cast<uint32_t>(per_sector);
-    flash_.erase(sector * static_cast<uint32_t>(sector_size), 0);
+    uint32_t first_sector = first_field / static_cast<uint32_t>(per_sector);
+    uint32_t units        = field_count / static_cast<uint32_t>(per_sector);
+    for (uint32_t i = 0; i < units; i++)
+        flash_.erase((first_sector + i) * static_cast<uint32_t>(sector_size), 0);
     return FlashLogError::OK;
 }
 
