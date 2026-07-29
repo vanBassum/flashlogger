@@ -6,4 +6,5 @@ _Placeholder (M3)._
 - Sector sequencing for recovery ordering.
 - Records spanning the reclaim boundary must die cleanly ("dangling fields").
 
-<!-- TODO: depends on the sector-0 decision. -->
+<!-- TODO: sector-0 is solved (per-sector reserved headers already in place);
+     what remains is reclaim policy + sector sequence numbers. -->

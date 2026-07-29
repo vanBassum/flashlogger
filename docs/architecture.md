@@ -11,7 +11,7 @@ layer on top.
 │  mount-recovery, circular reclaim            │  power-cycle recovery.
 ├─────────────────────────────────────────────┤
 │  Field layer            (FieldStore)         │  Fixed-size Fields,
-│  format / init / read / write (indexed)      │  index-addressed,
+│  format / init / read / write / clear        │  index-addressed,
 │                                              │  header + validation.
 ├─────────────────────────────────────────────┤
 │  IFlash HAL             (interface)          │  read / write / erase
@@ -37,6 +37,9 @@ fixed-size Field placement; hides sector math from callers.
 - Fields are fixed size, so the layer is **index-addressed** (no
   iterators here).
 - Fields never span a sector boundary.
+- Every sector reserves header-sized space (symmetric layout), so erase-units
+  are uniform: `clear(first_field, field_count)` erases whole units and
+  `fieldsPerUnit()` reports the unit size.
 - `format(key_size, value_size)` writes the header; `init()` reads and
   validates it (magic + CRC). See [flash-format.md](flash-format.md).
 - No threading — the caller's responsibility.
@@ -51,7 +54,7 @@ crash-safe recovery, and circular reclaim.
 
 Internals are still open — see
 [ideas/design-decisions.md](ideas/design-decisions.md) (record header
-contents, append cursor location, iterator shape, the sector-0 problem).
+contents, iterator shape).
 
 ## Boundaries (why the split)
 

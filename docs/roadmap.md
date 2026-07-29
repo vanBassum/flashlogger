@@ -7,39 +7,40 @@ ring reclaims space forever. Gap analysis 2026-07-06; decisions marked
 
 See [architecture.md](architecture.md) for the layer structure.
 
-## Blocking design decisions
+## Design decisions
 
 Tracked in [ideas/design-decisions.md](ideas/design-decisions.md).
 
-1. **decide — the sector-0 problem:** the format header occupies bytes
-   0–7 of sector 0, which also holds fields. Circular reclaim of
-   sector 0 would erase the header. Options: dedicated header sector /
-   small per-sector headers / rewrite header on reclaim. Per-sector
-   headers would also carry the sequence numbers mount recovery needs.
-2. **decide — record header field contents:** CRC algorithm & width,
-   field count or byte length, flags.
-3. **decide — where the append cursor lives:** field layer or record
-   layer.
-4. **decide — iterator shape:** caller-owned handle (stated
-   preference); forward-only?; how a lapped/invalidated handle reports
-   itself (ties into hash-validity).
+- **Resolved — the sector-0 problem:** every sector reserves header-sized
+  space (per-sector reserved headers); sector 0 holds the real header, the
+  rest stay 0xFF. Structural, implemented — see
+  [flash-format.md](flash-format.md).
+- **Resolved — where the append cursor lives:** the record layer; the field
+  layer is index-addressed and holds no cursor.
+- **decide — record header field contents:** CRC algorithm & width,
+  field count or byte length, flags.
+- **decide — iterator shape:** caller-owned handle (stated preference);
+  forward-only?; how a lapped/invalidated handle reports itself (ties into
+  hash-validity).
 
 ## Milestones
 
 | # | Milestone | Scope | Backlog item |
 |---|---|---|---|
-| M1 | Finish the field layer | small | [milestone-1-field-layer](backlog/milestone-1-field-layer.md) |
+| M1 | Field layer | small | ✅ done |
 | M2 | Record layer | **the bulk** | [record-layer](backlog/record-layer.md) |
 | M3 | Circular behavior | evening-ish | [circular-reclaim](backlog/circular-reclaim.md) |
 | M4 | ESP integration | mechanical | [esp-partition-adapter](backlog/esp-partition-adapter.md) |
 | M5 | Consumer side | tracked in Strux | — |
 
-### M1 — finish the field layer (small)
+### M1 — field layer ✅ done
 
-- `overwrite()` with clear-bits-only (AND) semantics — `write()`'s
-  exact read-back verify makes rewrites fail by design; the flags use
-  case needs a deliberate primitive.
-- Field-empty detection (all 0xFF) — the primitive every scan needs.
+`format`/`init`, indexed `read`/`write` (with read-back verify), `clear` of
+whole erase-units, `keySize`/`valueSize`/`fieldsPerUnit`, symmetric per-sector
+layout. 32 tests. The originally-planned `overwrite()` and field-empty
+detection were folded into the record layer: write integrity / overwrite is
+parked in [write-verification](backlog/write-verification.md);
+empty-detection emerges with mount/recovery.
 
 ### M2 — record layer (the bulk)
 
@@ -73,8 +74,6 @@ Tracked in [ideas/design-decisions.md](ideas/design-decisions.md).
 
 - CI: GitHub Action running `cmake && ctest`
   ([ci-workflow](backlog/ci-workflow.md)).
-- `LogBook.md` now lives in `docs/` — commit it or explicitly gitignore
-  it (currently untracked, exists only on one machine).
 
 Rough proportions: M1/M4/M5 ≈ an evening each; **M2 is the project** —
 comparable to everything built so far, and where strict TDD earns its

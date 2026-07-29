@@ -52,8 +52,8 @@ push directly. Every commit is pushed to the remote in the same step.
 Two-layer design (field layer first, record layer later):
 
 ```
-[ Record layer ]   <- not yet started
-[ Field layer  ]   <- FieldStore — current work
+[ Record layer ]   <- next
+[ Field layer  ]   <- FieldStore — done
 [ IFlash HAL   ]   <- interface + RamFlash test double
 ```
 
