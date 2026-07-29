@@ -54,11 +54,13 @@ layer is an internal detail, so a consumer constructs and formats a
 `RecordLog` and never names a Field. `init()` forwards down; `format()`
 erases every sector first and then writes the header — a format always
 wipes the store. `WriteRecord()` hands back a `RecordWriter` (name
-provisional) whose `field(key, value)` writes one Field. No start marker
-and no CRC yet — nothing has asked for them; the write cursor still lives
-in the writer, so two open records would collide, and `close()`/RAII and
-the "older handle goes stale" rule are not built. Everything below is the
-target, not the current state.
+provisional) whose `field(key, value)` writes one Field. Fields go straight
+to flash — nothing is buffered in RAM — so only one record may be open at a
+time: while one is open, `WriteRecord()` hands back a refused handle whose
+`field()` returns `RECORD_ALREADY_OPEN`. No start marker and no CRC yet —
+nothing has asked for them — and `close()`/RAII does not exist, so the open
+flag never clears and the write cursor still lives in the writer. Everything
+below is the target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive

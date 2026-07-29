@@ -13,4 +13,6 @@ enum class FlashLogError {
 
     ARG_INVALID,
     ARG_OUT_OF_BOUNDS,
+
+    RECORD_ALREADY_OPEN,
 };

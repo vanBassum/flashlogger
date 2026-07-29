@@ -12,6 +12,13 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   / [structural-not-powerfail](../reasoning/2026-07-28-16h37-per-sector-headers-are-structural-not-powerfail.md).
 - **Append cursor → record layer.** The field layer is index-addressed and
   holds no cursor.
+- **One record open at a time; the newcomer is refused (2026-07-29).** Because
+  `field()` writes straight to flash with no RAM buffering, two interleaved
+  records would interleave on flash. So a record must be closed before the next
+  opens, and while one is open `WriteRecord()` refuses — `field()` on that handle
+  returns `RECORD_ALREADY_OPEN`. Chosen over the earlier sketch where the *older*
+  handle went stale: nothing a caller holds ever dies under it. Closing is meant
+  to be RAII (the destructor catches a missing `close()`) — not built yet.
 - **Reserved key values scale with key width (2026-07-29).** Empty is all-ones
   for the key width (`0xFF` at 1 byte, `0xFFFFFFFF` at 4), tombstone is `0`,
   record-start is `1`. The point is to use the flash's own states, so a plain
@@ -50,8 +57,15 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
 ## Other open questions
 
 - **Record start marker / magic value** — how a record's start is recognized.
-- **Thread-safety mechanism** — mutex, critical section, or caller-provided
-  lock (consumer layer; the library core omits threading).
+- **Thread-safety mechanism — and whose job is it?** Currently recorded as *not*
+  the library's: the field layer omits threading and
+  [architecture.md](../architecture.md) puts thread safety entirely in the
+  consumer's manager. Bas raised (2026-07-29) that the library itself needs to be
+  thread-safe eventually, which reopens that. Not acted on yet. Note the overlap
+  with the stale-handle rule below: "opening a record invalidates the previous
+  handle" is single-threaded reasoning, and two threads each opening a record is
+  the same hazard wearing a different hat — so whichever way threading goes will
+  shape what a record handle is allowed to be.
 - **Sector management** — reclaim policy and when erasing happens. The field
   layer exposes `clear`; the *policy* is a record-layer / reclaim concern.
 - **Field-layer read-back verify** — now that record integrity is a CRC,

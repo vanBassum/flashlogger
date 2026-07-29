@@ -18,10 +18,12 @@ static constexpr uint32_t empty_key(uint8_t key_size)
 // Handle for the record currently being written. Name provisional.
 class RecordWriter {
 public:
-    RecordWriter(FieldStore& store) : store_(store) {}
+    RecordWriter(FieldStore& store, bool open) : store_(store), open_(open) {}
 
     FlashLogError field(uint32_t key, const void* value)
     {
+        if (!open_)
+            return FlashLogError::RECORD_ALREADY_OPEN;
         if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
             return FlashLogError::ARG_INVALID;
         return store_.write(next_index_++, key, value);
@@ -29,6 +31,7 @@ public:
 
 private:
     FieldStore& store_;
+    bool        open_;
     uint32_t    next_index_ = 0;
 };
 
@@ -38,7 +41,15 @@ public:
 
     FlashLogError init() { return store_.init(); }
 
-    RecordWriter WriteRecord() { return RecordWriter(store_); }
+    // Fields go straight to flash, so only one record can be written at a time:
+    // a second one has to wait until the first is closed.
+    RecordWriter WriteRecord()
+    {
+        if (record_open_)
+            return RecordWriter(store_, false);
+        record_open_ = true;
+        return RecordWriter(store_, true);
+    }
 
     // A format wipes the store: every sector is erased, then the header written.
     FlashLogError format(size_t key_size, size_t value_size)
@@ -52,4 +63,5 @@ public:
 private:
     IFlash&    flash_;
     FieldStore store_;
+    bool       record_open_ = false;
 };

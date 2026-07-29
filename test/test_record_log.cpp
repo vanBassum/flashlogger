@@ -26,6 +26,20 @@ TEST(RecordLog, a_record_takes_a_field) {
     EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
 }
 
+TEST(RecordLog, a_second_record_cannot_open_while_one_is_still_open) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record_1 = log.WriteRecord();
+    ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
+
+    auto record_2 = log.WriteRecord();   // record_1 is still open
+    EXPECT_EQ(record_2.field(8, &value), FlashLogError::RECORD_ALREADY_OPEN);
+}
+
 TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_one_byte_keys) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);
