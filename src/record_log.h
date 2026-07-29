@@ -3,6 +3,13 @@
 #include "field_store.h"
 #include "flashlog_error.h"
 
+// Key values the record layer keeps for itself; the field layer stores keys
+// opaquely and knows nothing of these. Values are the leaning set, not locked,
+// and are 1-byte-key values — multi-byte keys are still undecided.
+static constexpr uint32_t KEY_EMPTY  = 0xFF;  // never written
+static constexpr uint32_t KEY_ERASED = 0x00;  // tombstone
+static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
+
 // Handle for the record currently being written. Name provisional.
 class RecordWriter {
 public:
@@ -10,6 +17,8 @@ public:
 
     FlashLogError field(uint32_t key, const void* value)
     {
+        if (key == KEY_EMPTY || key == KEY_ERASED || key == KEY_MARKER)
+            return FlashLogError::ARG_INVALID;
         return store_.write(next_index_++, key, value);
     }
 

@@ -23,6 +23,11 @@ _Placeholder. This is the bulk of the project (M2)._
      that one. Without the wipe, the append point is found past the stale data
      (the frontier is structural — written bytes vs `0xFF`), so the fresh
      record lands after a field of leftovers and iteration sees garbage.
+- **Does `field()` actually store what it was given?** `a_record_takes_a_field`
+  only checks the call returns `OK`; the key and value landing on flash is taken
+  on trust, because there is no way to read a record back yet. Same for the
+  reserved-key rejections — nothing proves a rejected `field()` wrote nothing and
+  left the cursor alone. Tighten both once reading exists.
 - **Does a *rejected* `format()` erase?** Today it does — the erase runs before
   the field layer validates the sizes, so `format(0, 4)` wipes the store and
   then returns `ARG_INVALID`. Untested and undecided; see

@@ -26,6 +26,19 @@ TEST(RecordLog, a_record_takes_a_field) {
     EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
 }
 
+TEST(RecordLog, a_field_cannot_use_a_reserved_key) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.WriteRecord();
+    EXPECT_EQ(record.field(0xFF, &value), FlashLogError::ARG_INVALID);  // empty
+    EXPECT_EQ(record.field(0x00, &value), FlashLogError::ARG_INVALID);  // tombstone
+    EXPECT_EQ(record.field(0x01, &value), FlashLogError::ARG_INVALID);  // record start
+}
+
 TEST(RecordLog, a_rejected_format_leaves_the_store_unformatted) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);

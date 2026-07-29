@@ -65,8 +65,11 @@ decided. Open points:
 - **Record header field** — contents (CRC algorithm & width, field
   count vs byte length, flags), written last for crash safety.
 - **Record start marker / reserved keys** — `0xFF` = empty, `0x00` =
-  erased (a record-layer concern, not field-layer). How a record's
-  start is recognized.
+  erased, `0x01` = record start (a record-layer concern, not
+  field-layer). How a record's start is recognized. Enforced so far:
+  `RecordWriter::field()` rejects all three with `ARG_INVALID`, so user
+  data can never look like framing. Values are the leaning set and apply
+  to 1-byte keys; multi-byte reserved values are still undecided.
 - **Long values** — stored by repeating the same key across
   consecutive Fields.
 
