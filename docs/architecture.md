@@ -53,7 +53,12 @@ Being built test-first; only what a test demanded exists so far —
 layer is an internal detail, so a consumer constructs and formats a
 `RecordLog` and never names a Field. `init()` forwards down; `format()`
 erases every sector first and then writes the header — a format always
-wipes the store. Everything below is the target, not the current state.
+wipes the store. `WriteRecord()` hands back a `RecordWriter` (name
+provisional) whose `field(key, value)` writes one Field. No start marker
+and no CRC yet — nothing has asked for them; the write cursor still lives
+in the writer, so two open records would collide, and `close()`/RAII and
+the "older handle goes stale" rule are not built. Everything below is the
+target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive
