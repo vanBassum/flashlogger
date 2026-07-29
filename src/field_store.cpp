@@ -150,10 +150,20 @@ FlashLogError FieldStore::read(uint32_t index, void* key_out, void* value_out)
     return FlashLogError::OK;
 }
 
-FlashLogError FieldStore::clearSector(uint32_t sector_index)
+FlashLogError FieldStore::clear(uint32_t first_field, uint32_t field_count)
 {
-    size_t sector_size = flash_.getSectorSize();
-    flash_.erase(static_cast<uint32_t>(sector_index * sector_size), 0);
+    size_t   field_size  = key_size_ + value_size_;
+    size_t   sector_size = flash_.getSectorSize();
+
+    uint32_t first_addr = address_of_field(first_field, field_size, sector_size);
+    uint32_t last_addr  = address_of_field(first_field + field_count - 1, field_size, sector_size);
+
+    uint32_t first_sector = first_addr / static_cast<uint32_t>(sector_size);
+    uint32_t last_sector  = last_addr  / static_cast<uint32_t>(sector_size);
+
+    for (uint32_t s = first_sector; s <= last_sector; s++)
+        flash_.erase(s * static_cast<uint32_t>(sector_size), 0);
+
     return FlashLogError::OK;
 }
 

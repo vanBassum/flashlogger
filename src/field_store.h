@@ -13,7 +13,7 @@ public:
     FlashLogError format(size_t key_size, size_t value_size);
     FlashLogError write(uint32_t index, uint32_t key, const void* value);
     FlashLogError read(uint32_t index, void* key_out, void* value_out);
-    FlashLogError clearSector(uint32_t sector_index);
+    FlashLogError clear(uint32_t first_field, uint32_t field_count);
     uint8_t key_size() const;
     uint8_t value_size() const;
 
