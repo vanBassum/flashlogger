@@ -48,11 +48,12 @@ fixed-size Field placement; hides sector math from callers.
 ## Record layer — on top of Fields (in progress)
 
 Being built test-first; only what a test demanded exists so far —
-`RecordLog(IFlash&)`, `format(key_size, value_size)` and `init()`, which
-forward to the field layer. `RecordLog` **owns** its `FieldStore` (by value,
-no allocation): the field layer is an internal detail, so a consumer
-constructs and formats a `RecordLog` and never names a Field. Everything
-below is the target, not the current state.
+`RecordLog(IFlash&)`, `format(key_size, value_size)` and `init()`.
+`RecordLog` **owns** its `FieldStore` (by value, no allocation): the field
+layer is an internal detail, so a consumer constructs and formats a
+`RecordLog` and never names a Field. `init()` forwards down; `format()`
+erases every sector first and then writes the header — a format always
+wipes the store. Everything below is the target, not the current state.
 
 The hard part. A **Record** is one log entry made of one or more Fields;
 long values are stored by repeating the same key across consecutive

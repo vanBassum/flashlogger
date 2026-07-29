@@ -12,6 +12,13 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   / [structural-not-powerfail](../reasoning/2026-07-28-16h37-per-sector-headers-are-structural-not-powerfail.md).
 - **Append cursor → record layer.** The field layer is index-addressed and
   holds no cursor.
+- **`RecordLog::format` wipes the store (2026-07-29).** It erases every sector
+  and then writes the header — always, no questions asked. No refuse-if-formatted
+  guard. Reason: the append point is found structurally (the frontier between
+  written data and `0xFF`), so leaving stale records behind after a format would
+  put the cursor past last year's data. Open: whether *invalid arguments* should
+  erase too (currently they do — the erase happens before the field layer
+  validates).
 - **Field layer is hidden (2026-07-29).** The consumer only ever touches
   `RecordLog`: it owns a `FieldStore` by value and exposes its own
   `format`/`init` that forward down. Nothing above the record layer
