@@ -206,6 +206,47 @@ TEST(FieldStore, clear_erases_the_given_field_range) {
     EXPECT_EQ(val_out[1], 0x22);
 }
 
+// A clear range must cover whole erase-units (sectors). A range that starts
+// mid-sector is rejected and erases nothing. (sector 1 = indices 2..6, so
+// index 3 is mid-sector.)
+TEST(FieldStore, clear_returns_invalid_when_range_starts_mid_sector) {
+    RamFlash<32, 16> flash;
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint8_t v2[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(2, 0x03, v2), FlashLogError::OK);
+
+    EXPECT_EQ(store.clear(3, 2), FlashLogError::ARG_INVALID);
+
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(2, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x03);
+    EXPECT_EQ(val_out[0], 0xAA);
+    EXPECT_EQ(val_out[1], 0xBB);
+}
+
+// A range aligned at the start but not spanning the whole sector is also
+// rejected. (sector 1 holds 5 fields; count 3 leaves a partial sector.)
+TEST(FieldStore, clear_returns_invalid_when_range_is_partial_sector) {
+    RamFlash<32, 16> flash;
+    FieldStore store(flash);
+    store.format(1, 2);
+    store.init();
+    uint8_t v2[2] = {0xAA, 0xBB};
+    EXPECT_EQ(store.write(2, 0x03, v2), FlashLogError::OK);
+
+    EXPECT_EQ(store.clear(2, 3), FlashLogError::ARG_INVALID);
+
+    uint8_t key_out = 0;
+    uint8_t val_out[2] = {0};
+    EXPECT_EQ(store.read(2, &key_out, val_out), FlashLogError::OK);
+    EXPECT_EQ(key_out,    0x03);
+    EXPECT_EQ(val_out[0], 0xAA);
+    EXPECT_EQ(val_out[1], 0xBB);
+}
+
 
 
 

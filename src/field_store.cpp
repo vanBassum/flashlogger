@@ -152,10 +152,31 @@ FlashLogError FieldStore::read(uint32_t index, void* key_out, void* value_out)
 
 FlashLogError FieldStore::clear(uint32_t first_field, uint32_t field_count)
 {
-    size_t   field_size  = key_size_ + value_size_;
-    size_t   sector_size = flash_.getSectorSize();
-    uint32_t addr        = address_of_field(first_field, field_size, sector_size);
+    size_t field_size  = key_size_ + value_size_;
+    size_t sector_size = flash_.getSectorSize();
 
+    size_t fields_in_sector_zero = (sector_size - HEADER_SIZE) / field_size;
+    size_t fields_per_sector     = sector_size / field_size;
+
+    // Find the first index and field count of the sector that first_field
+    // would start; a clear must cover exactly one whole sector.
+    uint32_t sector_first_field;
+    uint32_t sector_field_count;
+    if (first_field < fields_in_sector_zero) {
+        sector_first_field = 0;
+        sector_field_count = static_cast<uint32_t>(fields_in_sector_zero);
+    } else {
+        uint32_t rem    = first_field - static_cast<uint32_t>(fields_in_sector_zero);
+        uint32_t sector = 1 + rem / static_cast<uint32_t>(fields_per_sector);
+        sector_first_field = static_cast<uint32_t>(fields_in_sector_zero) +
+                             (sector - 1) * static_cast<uint32_t>(fields_per_sector);
+        sector_field_count = static_cast<uint32_t>(fields_per_sector);
+    }
+
+    if (first_field != sector_first_field || field_count != sector_field_count)
+        return FlashLogError::ARG_INVALID;
+
+    uint32_t addr = address_of_field(first_field, field_size, sector_size);
     flash_.erase(static_cast<uint32_t>((addr / sector_size) * sector_size), 0);
     return FlashLogError::OK;
 }
