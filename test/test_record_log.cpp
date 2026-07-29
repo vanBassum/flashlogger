@@ -14,3 +14,18 @@ TEST(RecordLog, init_reports_ok_after_format) {
     EXPECT_EQ(log.format(1, 4), FlashLogError::OK);
     EXPECT_EQ(log.init(), FlashLogError::OK);
 }
+
+TEST(RecordLog, a_rejected_format_writes_nothing) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    EXPECT_EQ(log.format(0, 4), FlashLogError::ARG_INVALID);
+    EXPECT_EQ(log.init(), FlashLogError::FORMAT_MISSING);
+}
+
+TEST(RecordLog, init_tells_junk_apart_from_blank_flash) {
+    RamFlash<4096, 256> flash;
+    uint8_t junk[4] = {0x00, 0x00, 0x00, 0x00};
+    flash.write(0, junk, 4, 0);
+    RecordLog log(flash);
+    EXPECT_EQ(log.init(), FlashLogError::FORMAT_CORRUPT);
+}
