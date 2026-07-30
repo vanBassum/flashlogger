@@ -9,6 +9,12 @@
 //
 // All three are published standards, so a flash dump can be checked against
 // any off-the-shelf tool.
+//
+// These functions are plain CRCs and nothing more. Note that the record layer
+// gives two *stored* CRC values a non-standard meaning — all-0xFF means "never
+// written" and all-0x00 means "cleared by an edit" — but that is its business,
+// not this file's. Nothing here avoids, reserves, or special-cases those
+// outputs; see the comment in record_log.cpp for why it doesn't need to.
 
 // CRC-8/AUTOSAR: poly 0x2F, init 0xFF, xorout 0xFF, MSB-first. Chosen over the
 // more common 0x07 because it detects more errors on short messages.

@@ -11,6 +11,23 @@ static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
 
 static constexpr size_t MAX_VALUE_SIZE = 255;  // value_size is stored in a uint8_t
 
+// NOT STANDARD CRC BEHAVIOUR — read this before touching the CRC code.
+//
+// Two *stored* CRC values carry extra meaning, and it is easy to skip over:
+//
+//   all 0xFF  -> the CRC was never written. The record was opened but never
+//                closed (power loss, forgotten close): torn, don't hand it out.
+//   all 0x00  -> the CRC was deliberately cleared, which is how an edit is
+//                recorded (clearing bits is the only rewrite NOR allows). The
+//                record was valid when written but has changed since, so its
+//                current contents are trusted rather than verified.
+//
+// This does NOT make those two values illegal CRC outputs, and they are never
+// avoided or nudged. The reason it works: integrity is checked by *recomputing*
+// the CRC and comparing, so a record whose genuine CRC really is 0xFF.. or 0
+// still matches and reads as intact. The meanings above are only consulted when
+// recompute and stored *disagree*.
+
 static constexpr uint32_t empty_key(uint8_t key_size)
 {
     return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
