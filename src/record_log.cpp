@@ -33,6 +33,24 @@ static constexpr uint32_t empty_key(uint8_t key_size)
     return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
 }
 
+// What a key means to the record layer. Every walk over the store asks this, and
+// each one cares about a different subset — spelling the cases out makes those
+// differences visible instead of hiding them in the order of if-statements.
+enum class KeyKind {
+    Data,       // ordinary user field
+    Marker,     // start of a record
+    Tombstone,  // cleared: ends a record and is skipped
+    Empty,      // never written
+};
+
+static KeyKind classify_key(uint32_t key, uint8_t key_size)
+{
+    if (key == empty_key(key_size)) return KeyKind::Empty;
+    if (key == KEY_MARKER)          return KeyKind::Marker;
+    if (key == KEY_ERASED)          return KeyKind::Tombstone;
+    return KeyKind::Data;
+}
+
 // Widest CRC that fits the value: 1 -> CRC8, 2-3 -> CRC16, 4+ -> CRC32. Derived
 // from valueSize, so nothing extra is stored.
 static uint8_t crc_width(uint8_t value_size)
@@ -93,8 +111,8 @@ static FlashLogError compute_record_crc(FieldStore& store, uint32_t start, uint8
             break;                       // end of the store ends the record
         if (err != FlashLogError::OK)
             return err;
-        if (key == KEY_MARKER || key == KEY_ERASED || key == empty_key(store.keySize()))
-            break;
+        if (classify_key(key, store.keySize()) != KeyKind::Data)
+            break;                       // anything but data ends the record
 
         uint8_t key_bytes[4];
         for (uint8_t i = 0; i < store.keySize(); i++)
@@ -169,10 +187,9 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
             return err;
         if (found == key)
             return FlashLogError::OK;
-        // A marker starts the next record, empty means nothing was ever
-        // written, a tombstone both ends this record and is skipped.
-        if (found == KEY_MARKER || found == KEY_ERASED
-            || found == empty_key(store_.keySize()))
+        // The record ended before the key turned up. A user key can never be a
+        // reserved value, so a match is always a data field.
+        if (classify_key(found, store_.keySize()) != KeyKind::Data)
             return FlashLogError::ARG_INVALID;  // not found — placeholder error
     }
 }
@@ -191,7 +208,8 @@ FlashLogError RecordReader::next()
         if (err != FlashLogError::OK)
             return err;
 
-        if (key == KEY_MARKER) {
+        switch (classify_key(key, store_.keySize())) {
+        case KeyKind::Marker:
             // A crash leaves a torn record behind, and anything written after it
             // sits further on — so a torn record is not the end of the log and
             // must not hide what follows. Corrupt records are *not* skipped:
@@ -200,9 +218,14 @@ FlashLogError RecordReader::next()
                 continue;
             start_ = index;
             return FlashLogError::OK;
-        }
-        if (key == empty_key(store_.keySize()))
+
+        case KeyKind::Empty:
             return FlashLogError::END_OF_LOG;
+
+        case KeyKind::Tombstone:
+        case KeyKind::Data:
+            break;                       // part of a record we're leaving behind
+        }
     }
 }
 
@@ -256,7 +279,7 @@ FlashLogError RecordLog::init()
             break;                                  // the store is full
         if (err != FlashLogError::OK)
             return err;
-        if (key == empty_key(store_.keySize()))
+        if (classify_key(key, store_.keySize()) == KeyKind::Empty)
             break;                                  // first never-written field
 
         next_index_ = index + 1;
@@ -311,8 +334,8 @@ FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t valu
     // would put whatever followed it on flash.
     if (value_size < store_.valueSize())
         return FlashLogError::ARG_INVALID;
-    if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
-        return FlashLogError::ARG_INVALID;
+    if (classify_key(key, store_.keySize()) != KeyKind::Data)
+        return FlashLogError::ARG_INVALID;   // user fields must not look like framing
     return store_.write(next_index_++, key, value);
 }
 
