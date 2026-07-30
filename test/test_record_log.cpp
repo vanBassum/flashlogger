@@ -406,3 +406,43 @@ TEST(RecordLog, next_reports_the_end_of_the_log) {
     auto reader = log.firstRecord();
     EXPECT_EQ(reader.next(), FlashLogError::END_OF_LOG);
 }
+
+// A crash leaves a torn record behind, and records written afterwards sit after
+// it — so a torn record in the middle must not hide them.
+TEST(RecordLog, next_skips_a_torn_record) {
+    RamFlash<4096, 256> flash;
+
+    uint32_t first = 0x11223344;
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &first, sizeof(first)), FlashLogError::OK);
+    }
+
+    // Power cut: marker and field on flash, close() never runs. The handle is
+    // deliberately leaked so no destructor commits it.
+    RecordLog crashed(flash);
+    ASSERT_EQ(crashed.init(), FlashLogError::OK);
+    uint32_t lost = 0x99999999;
+    auto* torn = new RecordWriter(crashed.createRecord());
+    ASSERT_EQ(torn->field(8, &lost, sizeof(lost)), FlashLogError::OK);
+
+    uint32_t third = 0x55667788;
+    RecordLog reopened(flash);
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(9, &third, sizeof(third)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();
+    uint32_t out = 0;
+    ASSERT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);   // record 1
+    ASSERT_EQ(out, 0x11223344u);
+
+    ASSERT_EQ(reader.next(), FlashLogError::OK);                       // skips the torn one
+    EXPECT_EQ(reader.read(9, &out, sizeof(out)), FlashLogError::OK);
+    EXPECT_EQ(out, 0x55667788u);
+}

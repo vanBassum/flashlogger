@@ -109,6 +109,38 @@ static FlashLogError compute_record_crc(FieldStore& store, uint32_t start, uint8
 }
 
 
+// Is the record at `start` intact? Recomputes and compares — the stored value is
+// never assumed. Returns OK when it matches, and when it doesn't, says which of
+// the two special stored values explains it. See the reserved-CRC comment above.
+static FlashLogError classify_record(FieldStore& store, uint32_t start)
+{
+    uint32_t      marker = 0;
+    uint8_t       stored[MAX_VALUE_SIZE];
+    FlashLogError err = store.read(start, &marker, stored);
+    if (err != FlashLogError::OK)
+        return err;
+
+    uint8_t fresh[MAX_VALUE_SIZE];
+    err = compute_record_crc(store, start, fresh);
+    if (err != FlashLogError::OK)
+        return err;
+
+    uint8_t width = crc_width(store.valueSize());
+    if (memcmp(stored, fresh, width) == 0)
+        return FlashLogError::OK;
+
+    bool all_ones = true, all_zero = true;
+    for (uint8_t i = 0; i < width; i++) {
+        if (stored[i] != 0xFF) all_ones = false;
+        if (stored[i] != 0x00) all_zero = false;
+    }
+    if (all_ones)
+        return FlashLogError::RECORD_TORN;     // never back-filled
+    if (!all_zero)
+        return FlashLogError::RECORD_CORRUPT;  // a real CRC, data changed behind it
+    return FlashLogError::OK;                  // cleared by an edit: trust it
+}
+
 RecordReader::RecordReader(FieldStore& store, uint32_t start)
     : store_(store), start_(start)
 {
@@ -124,34 +156,11 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
     if (value_out_size < store_.valueSize())
         return FlashLogError::ARG_INVALID;
 
-    // Integrity is always verified by recomputing over the current data and
-    // comparing — the stored value alone is never assumed, so a genuine CRC of
-    // 0xFF.. or 0 is not a magic collision. Only a *mismatch* is interpreted by
-    // what is stored.
-    uint32_t      marker = 0;
-    uint8_t       stored[MAX_VALUE_SIZE];
-    FlashLogError err = store_.read(start_, &marker, stored);
+    // Torn or corrupt is reported, not papered over: pointing straight at a bad
+    // record tells you so. Only next() skips torn ones.
+    FlashLogError err = classify_record(store_, start_);
     if (err != FlashLogError::OK)
         return err;
-
-    uint8_t width = crc_width(store_.valueSize());
-    uint8_t fresh[MAX_VALUE_SIZE];
-    err = compute_record_crc(store_, start_, fresh);
-    if (err != FlashLogError::OK)
-        return err;
-
-    if (memcmp(stored, fresh, width) != 0) {
-        bool all_ones = true, all_zero = true;
-        for (uint8_t i = 0; i < width; i++) {
-            if (stored[i] != 0xFF) all_ones = false;
-            if (stored[i] != 0x00) all_zero = false;
-        }
-        if (all_ones)
-            return FlashLogError::RECORD_TORN;      // never back-filled
-        if (!all_zero)
-            return FlashLogError::RECORD_CORRUPT;   // a real CRC, data changed behind it
-        // all_zero: cleared by a deliberate edit — was valid once, trust it now.
-    }
 
     for (uint32_t index = start_ + 1; ; index++) {
         uint32_t      found = 0;
@@ -183,6 +192,12 @@ FlashLogError RecordReader::next()
             return err;
 
         if (key == KEY_MARKER) {
+            // A crash leaves a torn record behind, and anything written after it
+            // sits further on — so a torn record is not the end of the log and
+            // must not hide what follows. Corrupt records are *not* skipped:
+            // silently dropping them would defeat the CRC.
+            if (classify_record(store_, index) == FlashLogError::RECORD_TORN)
+                continue;
             start_ = index;
             return FlashLogError::OK;
         }

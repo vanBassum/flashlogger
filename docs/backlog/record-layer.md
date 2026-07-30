@@ -28,8 +28,6 @@ these are the specific places that break:
 - [ ] Merge a value spread over repeated keys into a caller-supplied buffer.
 - [ ] Validity stamp on the iterator (copy of the record's stored CRC, checked
       after each read).
-- [ ] Mount/recovery: the append point is found, but torn records are not
-      skipped during iteration yet.
 - [ ] Field edit (clear bits) — must also clear that record's CRC to `0`, so the
       iterator has to remember where the record *started*, not just where it is.
 - [ ] Cache start/end pointers in `RecordLog` at `init()` so each new iterator
@@ -39,7 +37,6 @@ these are the specific places that break:
 
 ## Decide
 
-- [ ] Does iteration skip never-committed (all-ones CRC) records?
 - [ ] Where does scanning start once the ring exists? Index 0 is only the oldest
       until the log laps.
 - [ ] Caller's buffer too small for a merged value — error, or truncate and
