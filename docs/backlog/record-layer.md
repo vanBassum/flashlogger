@@ -3,6 +3,26 @@
 Reasoning lives in `docs/reasoning/`. This is just a list so things don't get
 forgotten; items get deleted once implemented.
 
+## Ring behaviour — not yet, but critical to get right
+
+Everything below assumes a linear store. It is wrong once the log wraps, and
+these are the specific places that break:
+
+- [ ] **The oldest record is not at index 0.** It can be at field 1000.
+      `firstRecord()` hardcodes 0.
+- [ ] **`init()`'s append-point scan is linear-only.** It walks from 0 to the
+      first empty field. After a wrap that pattern doesn't hold.
+- [ ] **Walks must wrap, so they can no longer end on the field layer's
+      out-of-bounds error.** Termination currently *borrows* that bound; a
+      wrapping walk continues at 0 instead, so the record layer needs its own
+      step budget of at most the total field count.
+- [ ] **Decide: how to tell newest from oldest.** On a full store, scanning alone
+      cannot. Either keep one sector always erased so the gap *is* the boundary
+      (append point just before it, oldest just after — no metadata, costs one
+      sector, nothing to update on power loss), or put sequence numbers in the
+      per-sector header bytes already reserved (exact, more moving parts).
+      Leaning: the gap.
+
 ## Build
 
 - [ ] Merge a value spread over repeated keys into a caller-supplied buffer.

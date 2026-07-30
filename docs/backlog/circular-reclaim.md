@@ -1,6 +1,6 @@
 # Circular reclaim
 
-_Placeholder (M3)._
+_Placeholder. See the "Ring behaviour" section in record-layer.md._
 
 - Reclaim policy (erase oldest / erase-ahead).
 - Sector sequencing for recovery ordering.

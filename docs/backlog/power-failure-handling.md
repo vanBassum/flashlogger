@@ -18,4 +18,4 @@ To do (record layer):
 - The power-loss test rig (RamFlash write interruption + `reboot()`) returns
   here to drive these tests — it was shelved for the field layer on purpose.
 
-<!-- TODO: flesh out once the record layer starts (M2). -->
+<!-- TODO: flesh out as the record layer lands. -->
