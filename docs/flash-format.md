@@ -1,9 +1,12 @@
 # Flash format
 
-On-flash byte layout. Much is still undecided (the record layer, sector
-sequencing, reclaim); update this doc as those land. Sections marked
-**TBD** are not decided yet — see
-[ideas/design-decisions.md](ideas/design-decisions.md).
+On-flash byte layout — kept because it is a contract with data already written
+on devices, unlike the rest of the design docs, which were deleted in favour of
+the reasoning log. Much is still undecided (the record layer, sector
+sequencing, reclaim); update this doc as those land. Sections marked **TBD** are
+not decided yet — open questions live in
+[backlog/record-layer.md](backlog/record-layer.md), the *why* in
+[reasoning/](reasoning/).
 
 NOR-flash rules assumed throughout: erased = `0xFF`, writes only clear
 bits (1→0), erase resets a whole sector to `0xFF`.

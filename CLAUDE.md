@@ -6,25 +6,24 @@
 - **Strict TDD.** A failing test must exist before any implementation change. Never add a method, member, or constructor parameter without a failing test that requires it.
 - **Minimal effort.** Only add what the current failing test demands. No speculative members, no future-proofing.
 - **LogBook.md is read-only.** The user writes to it, Claude only reads.
-- **Keep the docs current.** `docs/` is the source of truth for design, layout, and plan. When a change affects any of them, update the relevant doc in the same change (before committing) — see Documentation below. Never let code and docs drift.
+- **Log, don't document.** Do NOT write or maintain design documentation. It goes stale and can be regenerated from the code plus the log. Capture the *why* as reasoning notes instead — see below.
 
-## Documentation
+## Logging, not documentation
 
-`docs/` holds the authoritative design/reference; the tables below in
-this file are a quick summary only. When a change touches one of these
-concerns, update the matching doc in the same change:
+The design docs (`architecture.md`, `roadmap.md`, `efficiency-analysis.md`,
+`ideas/*`) were **deleted on purpose** on 2026-07-30. Do not recreate them, and
+do not answer a change by "updating the docs".
 
-| Doc | Owns | Update when… |
+| Path | What it is | Rules |
 |---|---|---|
-| `docs/architecture.md` | layer structure & responsibilities | layers/HAL change |
-| `docs/flash-format.md` | on-flash byte layout | header/field/record encoding changes |
-| `docs/efficiency-analysis.md` | why variable-length + Option B | a layout/overhead decision changes |
-| `docs/roadmap.md` | milestones & remaining work | a milestone is started/finished, or scope shifts |
-| `docs/ideas/design-decisions.md` | open decisions (Bas's to make) | a decision is made (move it out of "open") or a new one appears |
-| `docs/ideas/parked-ideas.md` | deferred ideas | an idea is parked or picked up |
-| `docs/backlog/*.md` | per-item work notes | working on / completing an item |
+| `docs/reasoning/` | the log — one note per decision, with rejected alternatives | append-only and **immutable**; never edit or delete a note, a correction is a new note with `supersedes:`. Use the `reasoning-note` skill; timestamp from the real clock |
+| `docs/flash-format.md` | on-flash byte layout | the one kept reference — it is a contract with data already on devices. Update when the encoding changes |
+| `docs/backlog/*.md` | plain TODO lists so things aren't forgotten | disposable; delete items once implemented. TODOs only — no prose, no design write-ups |
+| `docs/LogBook.md` | Bas's own notes | read, never write |
 
-`docs/LogBook.md` is Bas-only — read, never write.
+Offer a reasoning note when a decision actually lands — a trade-off resolved, an
+alternative rejected, an assumption changed. Not for routine implementation
+steps. The reasoning is the asset; the decision is one trailing line.
 
 ## Build & test
 
@@ -37,7 +36,7 @@ ctest --test-dir build -C Debug --output-on-failure
 Always run tests after every implementation change.
 
 **Always commit and push.** Don't leave work uncommitted. For code,
-commit once all tests pass; for docs and reasoning notes, commit and
+commit once all tests pass; for reasoning notes and backlog edits, commit and
 push directly. Every commit is pushed to the remote in the same step.
 
 ## Constraints
@@ -47,36 +46,20 @@ push directly. Every commit is pushed to the remote in the same step.
 - C++17
 - No threading primitives in the field layer
 
-## Architecture
-
-Two-layer design (field layer first, record layer later):
+## Where the code lives
 
 ```
-[ Record layer ]   <- next
-[ Field layer  ]   <- FieldStore — done
+[ Record layer ]   <- RecordLog + RecordWriter, in progress
+[ Field layer  ]   <- FieldStore, done
 [ IFlash HAL   ]   <- interface + RamFlash test double
 ```
 
-- **IFlash** (`src/iflash.h`) — abstract flash interface: `read`, `write`, `erase`, `getSectorSize`, `getSize`
-- **RamFlash** (`test/ram_flash.h`) — RAM-backed test double; asserts on 0→1 bit transitions (flash rule)
-- **FieldStore** (`src/field_store.h`) — field layer; `init()` reads header from flash, `format(key_size, value_size)` writes it
+- **IFlash** (`src/iflash.h`) — abstract flash: `read`, `write`, `erase`, `getSectorSize`, `getSize`
+- **RamFlash** (`test/ram_flash.h`) — RAM test double; asserts on 0→1 bit transitions (flash rule)
+- **FieldStore** (`src/field_store.h`) — field layer, index-addressed fixed-size fields
+- **RecordLog** (`src/record_log.h`) — record layer; owns a `FieldStore`, so callers never see the field layer
 - **FlashLogError** (`src/flashlog_error.h`) — shared error enum for all layers
 
-## Header format (written by `format()`, validated by `init()`)
-
-| Offset | Size | Field |
-|--------|------|-------|
-| 0 | 4 | Magic `0x464C4F47` ("FLOG") |
-| 4 | 1 | key\_size (uint8\_t) |
-| 5 | 1 | value\_size (uint8\_t) |
-| 6 | 2 | CRC16-CCITT over bytes 0–5 |
-
-## Key decisions
-
-| Topic | Decision |
-|-------|----------|
-| Record layout | Variable-length |
-| Overhead scheme | Option B — one header field per record |
-| Field layer threading | None — caller's responsibility |
-| Flash HAL timeout type | `uint32_t` by default, overridable via `FLASHLOGGER_TIMEOUT_T` define |
-| Reserved keys | `0xFF` = empty, `0x00` = erased — record layer concern, not field layer |
+Byte layout is in `docs/flash-format.md`. Everything else — why any of it is
+this way, and what was rejected — is in `docs/reasoning/`. Read the log rather
+than trusting a summary here; this file deliberately keeps none.

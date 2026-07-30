@@ -29,14 +29,18 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-## Documentation
+## Why things are the way they are
 
-See [`docs/`](docs/):
+There is deliberately no design documentation — it goes stale, and it can be
+regenerated from the code plus the log. What is kept is the reasoning:
 
-- [architecture.md](docs/architecture.md) — the two-layer design
-- [flash-format.md](docs/flash-format.md) — on-flash byte layout
-- [roadmap.md](docs/roadmap.md) — milestones and remaining work
-- [efficiency-analysis.md](docs/efficiency-analysis.md) — why
-  variable-length + Option B
-- [ideas/](docs/ideas/) — open design decisions and parked ideas
-- [backlog/](docs/backlog/) — per-item work notes
+- [reasoning/](docs/reasoning/) — append-only log, one note per decision, with
+  the alternatives that were rejected. Immutable: a note is never edited, and a
+  correction is a new note that supersedes the old one. Timestamps sort, so the
+  folder reads as a timeline of how the project got here.
+- [flash-format.md](docs/flash-format.md) — the one exception. On-flash byte
+  layout is a contract with data already written on devices, so being wrong
+  costs data that can't be recovered.
+- [backlog/](docs/backlog/) — plain TODO lists so things aren't forgotten.
+  Disposable: items are deleted once implemented.
+- [LogBook.md](docs/LogBook.md) — Bas's own notes.

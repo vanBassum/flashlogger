@@ -45,6 +45,25 @@ forgotten; items get deleted once implemented.
       code is checked today.
 - [ ] A *rejected* `field()` wrote nothing and left the cursor alone.
 
+## Decide — inherited from the deleted design-decisions.md
+
+- [ ] Record header: any flags at all, or is the CRC the whole header value?
+- [ ] CRC8 and CRC32 polynomial choice (CRC16 reuses the existing `crc16`).
+- [ ] How a record's start is recognised during iteration (marker value is
+      settled; the scan rule isn't).
+- [ ] Reclaim policy and when erasing happens. The field layer exposes `clear`;
+      the policy is a record-layer concern.
+
+## Someday — not scheduled, revisit on real need
+
+- [ ] **Handled-flags convention** (Bas, 2026-07-06): the app dedicates one
+      key/value pair per entry as flags; a service iterates, does a job (ship
+      logs somewhere), then clears bits to mark it handled. Pure app convention
+      on top of clear-bits-only overwrite.
+- [ ] Fast lookup / secondary index — jump to next/prev field with the same key
+      (per-field linked offsets, or a per-sector key index).
+- [ ] Ordered / binary search over records.
+
 ## Cheap fixes, no test yet
 
 - [ ] Delete `RecordWriter`'s copy constructor — a copy would close twice.
