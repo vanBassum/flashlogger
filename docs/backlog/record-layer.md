@@ -66,6 +66,16 @@ forgotten; items get deleted once implemented.
 - [ ] Reclaim policy and when erasing happens. The field layer exposes `clear`;
       the policy is a record-layer concern.
 
+## Typed API over private raw access (Bas, 2026-07-30)
+
+- [ ] Make the raw `void*` + size `field()`/`read()` **private**, and expose
+      typed overloads on top (`field(key, uint32_t)`, `read(key, float&)`, …).
+      The size then comes from the type at compile time, so the
+      buffer-too-small class of bug becomes unrepresentable rather than
+      checked at runtime — the current `ARG_INVALID` floor checks in
+      `writeField`/`read` only exist because the caller can lie about the size.
+      Raw access stays for the blob / multi-field case.
+
 ## Someday — not scheduled, revisit on real need
 
 - [ ] **Handled-flags convention** (Bas, 2026-07-06): the app dedicates one

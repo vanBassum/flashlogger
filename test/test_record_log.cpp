@@ -23,7 +23,7 @@ TEST(RecordLog, a_record_takes_a_field) {
 
     uint32_t value = 0x11223344;
     auto record = log.createRecord();
-    EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
+    EXPECT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
 }
 
 TEST(RecordLog, a_field_reads_back_what_was_written) {
@@ -34,13 +34,28 @@ TEST(RecordLog, a_field_reads_back_what_was_written) {
 
     uint32_t value = 0x11223344;
     auto record = log.createRecord();
-    ASSERT_EQ(record.field(7, &value), FlashLogError::OK);
+    ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
     ASSERT_EQ(record.close(), FlashLogError::OK);
 
     auto reader = log.firstRecord();
     uint32_t out = 0;
     EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
     EXPECT_EQ(out, 0x11223344u);
+}
+
+TEST(RecordLog, field_refuses_a_buffer_too_small_for_the_value) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);   // 4-byte values
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    auto record = log.createRecord();
+
+    uint16_t too_small = 0x1122;                     // would be read 2 bytes past
+    EXPECT_EQ(record.field(7, &too_small, sizeof(too_small)), FlashLogError::ARG_INVALID);
+
+    uint32_t big_enough = 0x11223344;                // the right size still works
+    EXPECT_EQ(record.field(7, &big_enough, sizeof(big_enough)), FlashLogError::OK);
 }
 
 TEST(RecordLog, read_refuses_a_buffer_too_small_for_the_value) {
@@ -52,7 +67,7 @@ TEST(RecordLog, read_refuses_a_buffer_too_small_for_the_value) {
     uint32_t value = 0x11223344;
     {
         auto record = log.createRecord();
-        ASSERT_EQ(record.field(7, &value), FlashLogError::OK);
+        ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
     }
 
     auto reader = log.firstRecord();
@@ -74,13 +89,13 @@ TEST(RecordLog, reading_one_record_does_not_find_another_records_field) {
     uint32_t first = 0x11223344;
     {
         auto record = log.createRecord();
-        ASSERT_EQ(record.field(7, &first), FlashLogError::OK);
+        ASSERT_EQ(record.field(7, &first, sizeof(first)), FlashLogError::OK);
     }
 
     uint32_t second = 0x55667788;
     {
         auto record = log.createRecord();
-        ASSERT_EQ(record.field(8, &second), FlashLogError::OK);
+        ASSERT_EQ(record.field(8, &second, sizeof(second)), FlashLogError::OK);
     }
 
     auto reader = log.firstRecord();
@@ -101,10 +116,10 @@ TEST(RecordLog, a_second_record_cannot_open_while_one_is_still_open) {
 
     uint32_t value = 0x11223344;
     auto record_1 = log.createRecord();
-    ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
+    ASSERT_EQ(record_1.field(7, &value, sizeof(value)), FlashLogError::OK);
 
     auto record_2 = log.createRecord();   // record_1 is still open
-    EXPECT_EQ(record_2.field(8, &value), FlashLogError::RECORD_ALREADY_OPEN);
+    EXPECT_EQ(record_2.field(8, &value, sizeof(value)), FlashLogError::RECORD_ALREADY_OPEN);
 }
 
 TEST(RecordLog, the_destructor_closes_a_record_so_the_next_one_can_open) {
@@ -116,11 +131,11 @@ TEST(RecordLog, the_destructor_closes_a_record_so_the_next_one_can_open) {
     uint32_t value = 0x11223344;
     {
         auto record_1 = log.createRecord();
-        ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
+        ASSERT_EQ(record_1.field(7, &value, sizeof(value)), FlashLogError::OK);
     }   // no close() call — the destructor has to do it
 
     auto record_2 = log.createRecord();
-    EXPECT_EQ(record_2.field(8, &value), FlashLogError::OK);
+    EXPECT_EQ(record_2.field(8, &value, sizeof(value)), FlashLogError::OK);
 }
 
 TEST(RecordLog, close_ends_a_record_without_waiting_for_the_destructor) {
@@ -131,11 +146,11 @@ TEST(RecordLog, close_ends_a_record_without_waiting_for_the_destructor) {
 
     uint32_t value = 0x11223344;
     auto record_1 = log.createRecord();
-    ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
+    ASSERT_EQ(record_1.field(7, &value, sizeof(value)), FlashLogError::OK);
     ASSERT_EQ(record_1.close(), FlashLogError::OK);
 
     auto record_2 = log.createRecord();       // record_1 still in scope, but closed
-    EXPECT_EQ(record_2.field(8, &value), FlashLogError::OK);
+    EXPECT_EQ(record_2.field(8, &value, sizeof(value)), FlashLogError::OK);
 }
 
 TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_one_byte_keys) {
@@ -146,9 +161,9 @@ TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_one_byte_keys) {
 
     uint32_t value = 0x11223344;
     auto record = log.createRecord();
-    EXPECT_EQ(record.field(0xFF, &value), FlashLogError::ARG_INVALID);  // empty
-    EXPECT_EQ(record.field(0x00, &value), FlashLogError::ARG_INVALID);  // tombstone
-    EXPECT_EQ(record.field(0x01, &value), FlashLogError::ARG_INVALID);  // record start
+    EXPECT_EQ(record.field(0xFF, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // empty
+    EXPECT_EQ(record.field(0x00, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // tombstone
+    EXPECT_EQ(record.field(0x01, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // record start
 }
 
 TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_four_byte_keys) {
@@ -159,9 +174,9 @@ TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_four_byte_keys) {
 
     uint32_t value = 0x11223344;
     auto record = log.createRecord();
-    EXPECT_EQ(record.field(0xFFFFFFFF, &value), FlashLogError::ARG_INVALID);  // empty
-    EXPECT_EQ(record.field(0x00000000, &value), FlashLogError::ARG_INVALID);  // tombstone
-    EXPECT_EQ(record.field(0x00000001, &value), FlashLogError::ARG_INVALID);  // record start
+    EXPECT_EQ(record.field(0xFFFFFFFF, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // empty
+    EXPECT_EQ(record.field(0x00000000, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // tombstone
+    EXPECT_EQ(record.field(0x00000001, &value, sizeof(value)), FlashLogError::ARG_INVALID);  // record start
 }
 
 // "Empty" is all-ones for the key width, so a narrower all-ones value is
@@ -174,7 +189,7 @@ TEST(RecordLog, reserved_keys_scale_with_key_width) {
 
     uint32_t value = 0x11223344;
     auto record = log.createRecord();
-    EXPECT_EQ(record.field(0xFF, &value), FlashLogError::OK);
+    EXPECT_EQ(record.field(0xFF, &value, sizeof(value)), FlashLogError::OK);
 }
 
 TEST(RecordLog, a_rejected_format_leaves_the_store_unformatted) {

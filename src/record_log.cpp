@@ -52,11 +52,11 @@ RecordWriter::RecordWriter(RecordLog* log)
 
 RecordWriter::~RecordWriter() { close(); }
 
-FlashLogError RecordWriter::field(uint32_t key, const void* value)
+FlashLogError RecordWriter::field(uint32_t key, const void* value, size_t value_size)
 {
     if (!log_)
         return FlashLogError::RECORD_ALREADY_OPEN;
-    return log_->writeField(key, value);
+    return log_->writeField(key, value, value_size);
 }
 
 // Dropping the log makes close() idempotent, so the destructor after an
@@ -109,8 +109,13 @@ RecordWriter RecordLog::createRecord()
 // tombstones ahead of it.
 RecordReader RecordLog::firstRecord() { return RecordReader(store_, 0); }
 
-FlashLogError RecordLog::writeField(uint32_t key, const void* value)
+FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t value_size)
 {
+    // Refuse up front rather than over-reading the caller's buffer: the field
+    // layer always writes a whole value_size worth of bytes, so a short source
+    // would put whatever followed it on flash.
+    if (value_size < store_.valueSize())
+        return FlashLogError::ARG_INVALID;
     if (key == empty_key(store_.keySize()) || key == KEY_ERASED || key == KEY_MARKER)
         return FlashLogError::ARG_INVALID;
     return store_.write(next_index_++, key, value);

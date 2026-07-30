@@ -28,7 +28,7 @@ public:
     RecordWriter(RecordLog* log);
     ~RecordWriter();
 
-    FlashLogError field(uint32_t key, const void* value);
+    FlashLogError field(uint32_t key, const void* value, size_t value_size);
     FlashLogError close();
 
 private:
@@ -48,7 +48,7 @@ public:
 private:
     friend class RecordWriter;
 
-    FlashLogError writeField(uint32_t key, const void* value);
+    FlashLogError writeField(uint32_t key, const void* value, size_t value_size);
     void          closeRecord();
 
     IFlash&    flash_;
