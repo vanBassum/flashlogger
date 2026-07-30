@@ -3,7 +3,7 @@
 Reasoning lives in `docs/reasoning/`. This is just a list so things don't get
 forgotten; items get deleted once implemented.
 
-## Ring behaviour — writes wrap; reading a wrapped store does not work yet
+## Ring behaviour — working, with the odd setups still open
 
 Writes now wrap and reclaim: stepping into a sector erases the *next* one, so one
 erased sector always sits ahead of the cursor. That gap is the boundary marker —
@@ -17,9 +17,13 @@ oldest surviving record by starting at the append point and walking to the first
 marker — which also steps over an orphaned tail, since those are data fields with
 no marker.
 
-`init()`'s scan turns out to be correct as-is: because there is exactly one
-contiguous gap, the first empty field found from slot 0 is always the append
-point. Left alone rather than rewritten.
+Mount survives a power cut mid-erase. `init()` first finishes any half-erased
+sector — fields fill from the start of a sector, so empty followed by written
+*inside one sector* can only be an unfinished erase — and then takes the append
+point to be the single place where written data gives way to erased space. An
+earlier note here claimed "the first empty field from slot 0 is always the append
+point"; that was wrong, and a half-erased sector is exactly the case that breaks
+it. See reasoning note 2026-07-30-16h10 and its follow-up.
 
 Still broken or unproven, in rough order:
 
@@ -48,13 +52,9 @@ Still broken or unproven, in rough order:
       iterator has to remember where the record *started*, not just where it is.
 - [ ] Cache start/end pointers in `RecordLog` at `init()` so each new iterator
       doesn't rescan. Build the scan first, then cache.
-- [ ] Bound every walk by the total field count — corrupt bytes must not spin
-      forever.
 
 ## Decide
 
-- [ ] Where does scanning start once the ring exists? Index 0 is only the oldest
-      until the log laps.
 - [ ] Caller's buffer too small for a merged value — error, or truncate and
       report the size needed?
 - [ ] What does a *non-adjacent* repeat of a key mean? Adjacent repeats are one
@@ -85,9 +85,6 @@ Still broken or unproven, in rough order:
 - [ ] `read()` takes a buffer size and refuses one smaller than `valueSize`, but
       the size is only a floor check — once a value can span several fields it
       has to bound the *merge* too.
-- [ ] `firstRecord()` assumes the first record starts at index 0. True while
-      `format()` wipes and appends start there; wrong once reclaim can leave
-      tombstones ahead of it, which is when the scan becomes necessary.
 - [ ] `createRecord()` ignores the result of writing the marker — there is no
       error channel, since it returns a handle rather than a status.
 
