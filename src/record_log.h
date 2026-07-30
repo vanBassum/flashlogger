@@ -32,9 +32,37 @@ private:
     RecordLog* log_;
 };
 
+// Handle for reading a record. Separate from RecordWriter: reading never
+// mutates the append cursor, and a record may be read long after it was closed.
+class RecordReader {
+public:
+    RecordReader(FieldStore& store) : store_(store) {}
+
+    // Walks fields looking for the key. Bounded by the field layer, which
+    // refuses an index past the end of the store.
+    FlashLogError read(uint32_t key, void* value_out)
+    {
+        for (uint32_t index = 0; ; index++) {
+            uint32_t found = 0;
+            FlashLogError err = store_.read(index, &found, value_out);
+            if (err != FlashLogError::OK)
+                return err;
+            if (found == key)
+                return FlashLogError::OK;
+            if (found == empty_key(store_.keySize()))
+                return FlashLogError::ARG_INVALID;  // not found — placeholder error
+        }
+    }
+
+private:
+    FieldStore& store_;
+};
+
 class RecordLog {
 public:
     RecordLog(IFlash& flash) : flash_(flash), store_(flash) {}
+
+    RecordReader firstRecord() { return RecordReader(store_); }
 
     FlashLogError init() { return store_.init(); }
 

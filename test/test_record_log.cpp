@@ -26,6 +26,23 @@ TEST(RecordLog, a_record_takes_a_field) {
     EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
 }
 
+TEST(RecordLog, a_field_reads_back_what_was_written) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.createRecord();
+    ASSERT_EQ(record.field(7, &value), FlashLogError::OK);
+    ASSERT_EQ(record.close(), FlashLogError::OK);
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out), FlashLogError::OK);
+    EXPECT_EQ(out, 0x11223344u);
+}
+
 TEST(RecordLog, a_second_record_cannot_open_while_one_is_still_open) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);

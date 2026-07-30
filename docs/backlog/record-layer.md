@@ -36,14 +36,22 @@ forgotten; items get deleted once implemented.
       open".
 - [ ] Should the library itself be thread-safe? Currently the caller's job.
 
-## Tests we owe (blocked on reading)
+## Tests we owe (now unblocked — reading exists)
 
 - [ ] `format()` wipes the store. Real version: append records → `format()` →
       append one record → iterate finds exactly that one. Without the wipe the
       append point lands past the stale data.
-- [ ] `field()` actually stores the key and value it was given — only the return
-      code is checked today.
 - [ ] A *rejected* `field()` wrote nothing and left the cursor alone.
+- [ ] `read()`'s "key not found" currently returns `ARG_INVALID` as a
+      placeholder, and running off the end of the store returns
+      `ARG_OUT_OF_BOUNDS` — two different answers to the same question, neither
+      tested. Needs a real error and a decision.
+- [ ] `read()` clobbers the caller's `value_out` while walking, even when the key
+      is never found. Harmless today, ugly contract.
+- [ ] `firstRecord()` ignores the marker (there isn't one yet) and scans from
+      index 0, so it finds any field in the store, not the fields of the *first
+      record*. Correct only while one record exists — the second record is what
+      forces the marker.
 
 ## Decide — inherited from the deleted design-decisions.md
 
