@@ -309,3 +309,27 @@ TEST(RecordLog, an_unclosed_record_cannot_be_read) {
     uint32_t out = 0;
     EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::RECORD_TORN);
 }
+
+// Corruption is detected by recomputing the CRC, not by trusting the stored one.
+// Clearing bits in a value on flash is the only way to fake bit rot on NOR.
+TEST(RecordLog, a_corrupted_record_is_reported_not_returned) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
+    }
+
+    // field index 1 sits at 8 (sector header) + 1 * 5 (key+value); its value
+    // starts one byte later.
+    uint8_t cleared = 0x00;
+    flash.write(8 + 5 + 1, &cleared, 1, 0);
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::RECORD_CORRUPT);
+}

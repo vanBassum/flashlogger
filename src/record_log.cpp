@@ -1,4 +1,5 @@
 #include "record_log.h"
+#include "crc.h"
 #include <cstring>
 
 // Key values the record layer keeps for itself; the field layer stores keys
@@ -10,15 +11,86 @@ static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
 
 static constexpr size_t MAX_VALUE_SIZE = 255;  // value_size is stored in a uint8_t
 
-// Temporary commit stamp, written into the marker's value by close(). To be
-// replaced by the record's CRC in the next step. Deliberately neither 0xFF
-// (means never committed) nor 0x00 (reserved for "deliberately edited").
-static constexpr uint8_t COMMIT_STAMP = 0xFE;
-
 static constexpr uint32_t empty_key(uint8_t key_size)
 {
     return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
 }
+
+// Widest CRC that fits the value: 1 -> CRC8, 2-3 -> CRC16, 4+ -> CRC32. Derived
+// from valueSize, so nothing extra is stored.
+static uint8_t crc_width(uint8_t value_size)
+{
+    if (value_size == 1) return 1;
+    if (value_size < 4)  return 2;
+    return 4;
+}
+
+// Folds a record's bytes into whichever CRC its width calls for. Kept separate
+// from crc.h, which stays pure: the choice of width and what gets covered is
+// record-layer policy.
+class RecordCrc {
+public:
+    explicit RecordCrc(uint8_t width) : width_(width) {}
+
+    void update(const uint8_t* data, size_t len)
+    {
+        if (width_ == 1)      c8_  = crc8_update(c8_, data, len);
+        else if (width_ == 2) c16_ = crc16_update(c16_, data, len);
+        else                  c32_ = crc32_update(c32_, data, len);
+    }
+
+    void finalTo(uint8_t* out) const
+    {
+        if (width_ == 1) {
+            out[0] = crc8_final(c8_);
+        } else if (width_ == 2) {
+            uint16_t v = crc16_final(c16_);
+            out[0] = static_cast<uint8_t>(v);
+            out[1] = static_cast<uint8_t>(v >> 8);
+        } else {
+            uint32_t v = crc32_final(c32_);
+            for (uint8_t i = 0; i < 4; i++)
+                out[i] = static_cast<uint8_t>(v >> (8 * i));
+        }
+    }
+
+private:
+    uint8_t  width_;
+    uint8_t  c8_  = CRC8_INIT;
+    uint16_t c16_ = CRC16_INIT;
+    uint32_t c32_ = CRC32_INIT;
+};
+
+// Streams every data field of the record — keys as well as values, so a
+// corrupted key is caught too — through the CRC. Nothing is buffered: one field
+// is read at a time and folded in. Stops at whatever ends the record.
+static FlashLogError compute_record_crc(FieldStore& store, uint32_t start, uint8_t* out)
+{
+    RecordCrc crc(crc_width(store.valueSize()));
+
+    for (uint32_t index = start + 1; ; index++) {
+        uint32_t      key = 0;
+        uint8_t       value[MAX_VALUE_SIZE];
+        FlashLogError err = store.read(index, &key, value);
+        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
+            break;                       // end of the store ends the record
+        if (err != FlashLogError::OK)
+            return err;
+        if (key == KEY_MARKER || key == KEY_ERASED || key == empty_key(store.keySize()))
+            break;
+
+        uint8_t key_bytes[4];
+        for (uint8_t i = 0; i < store.keySize(); i++)
+            key_bytes[i] = static_cast<uint8_t>(key >> (8 * i));
+
+        crc.update(key_bytes, store.keySize());
+        crc.update(value, store.valueSize());
+    }
+
+    crc.finalTo(out);
+    return FlashLogError::OK;
+}
+
 
 RecordReader::RecordReader(FieldStore& store, uint32_t start)
     : store_(store), start_(start)
@@ -35,19 +107,34 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
     if (value_out_size < store_.valueSize())
         return FlashLogError::ARG_INVALID;
 
-    // The marker's value is the commit stamp. Still erased means close() never
-    // ran, so this record is torn and must not be handed out.
+    // Integrity is always verified by recomputing over the current data and
+    // comparing — the stored value alone is never assumed, so a genuine CRC of
+    // 0xFF.. or 0 is not a magic collision. Only a *mismatch* is interpreted by
+    // what is stored.
     uint32_t      marker = 0;
-    uint8_t       stamp[MAX_VALUE_SIZE];
-    FlashLogError err = store_.read(start_, &marker, stamp);
+    uint8_t       stored[MAX_VALUE_SIZE];
+    FlashLogError err = store_.read(start_, &marker, stored);
     if (err != FlashLogError::OK)
         return err;
-    bool committed = false;
-    for (uint8_t i = 0; i < store_.valueSize(); i++)
-        if (stamp[i] != 0xFF)
-            committed = true;
-    if (!committed)
-        return FlashLogError::RECORD_TORN;
+
+    uint8_t width = crc_width(store_.valueSize());
+    uint8_t fresh[MAX_VALUE_SIZE];
+    err = compute_record_crc(store_, start_, fresh);
+    if (err != FlashLogError::OK)
+        return err;
+
+    if (memcmp(stored, fresh, width) != 0) {
+        bool all_ones = true, all_zero = true;
+        for (uint8_t i = 0; i < width; i++) {
+            if (stored[i] != 0xFF) all_ones = false;
+            if (stored[i] != 0x00) all_zero = false;
+        }
+        if (all_ones)
+            return FlashLogError::RECORD_TORN;      // never back-filled
+        if (!all_zero)
+            return FlashLogError::RECORD_CORRUPT;   // a real CRC, data changed behind it
+        // all_zero: cleared by a deliberate edit — was valid once, trust it now.
+    }
 
     for (uint32_t index = start_ + 1; ; index++) {
         uint32_t      found = 0;
@@ -153,7 +240,13 @@ FlashLogError RecordLog::closeRecord()
 {
     record_open_ = false;
 
-    uint8_t stamp[MAX_VALUE_SIZE];
-    memset(stamp, COMMIT_STAMP, store_.valueSize());
+    // Back-fill last: the CRC is what makes the record durable. Writing over the
+    // erased placeholder only clears bits, so NOR allows it.
+    uint8_t       stamp[MAX_VALUE_SIZE];
+    memset(stamp, 0xFF, store_.valueSize());
+    FlashLogError err = compute_record_crc(store_, record_start_, stamp);
+    if (err != FlashLogError::OK)
+        return err;
+
     return store_.write(record_start_, KEY_MARKER, stamp);
 }

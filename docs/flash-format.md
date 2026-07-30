@@ -60,13 +60,43 @@ Sector 1:  [ 8B 0xFF gap][ field n ][ field n+1] ... [ waste ]
 ...
 ```
 
-## Record layout — TBD
+## Record layout (implemented so far)
 
-The record layer sits on top of Fields; its on-flash encoding is not
-decided. Open points:
+A record is a marker Field followed by its data Fields:
 
-- **Record header field** — contents (CRC algorithm & width, field
-  count vs byte length, flags), written last for crash safety.
+```
+[ key=0x01 | CRC ][ key=7 | value ][ key=9 | value ] ... until the next
+                                                        marker / empty / tombstone
+```
+
+- The **marker**'s key is the reserved record-start value; its value carries the
+  record's CRC. Written first with the value left erased (`0xFF…`), then
+  back-filled on `close()` — the back-fill only clears bits, so NOR allows it,
+  and a record with an un-filled CRC is self-identifying as torn.
+- **CRC width** is the widest that fits the value: `valueSize` 1 → CRC8, 2–3 →
+  CRC16, 4+ → CRC32, stored little-endian in the marker's value. Any remaining
+  bytes of the marker's value are left erased. Polynomials, all published
+  standards so a dump can be checked with off-the-shelf tools:
+
+  | Width | Poly | Init | Final xor |
+  |---|---|---|---|
+  | CRC8 | `0x2F` (AUTOSAR) | `0xFF` | `0xFF` |
+  | CRC16 | `0x1021` (CCITT-FALSE) | `0xFFFF` | none |
+  | CRC32 | `0xEDB88320` reflected (IEEE/zlib) | `0xFFFFFFFF` | `0xFFFFFFFF` |
+
+- **Coverage:** every data Field of the record, keys as well as values, so a
+  corrupted key is caught. No field is excluded. Streamed field-by-field, so no
+  buffer is needed regardless of record length.
+- **Verification is recompute-and-compare**, never trusting the stored value.
+  Equal → intact. Only a mismatch is interpreted by what is stored: all-ones →
+  never committed (torn), all-zero → deliberately edited (trust it), anything
+  else → corrupt. This is why a genuine CRC of `0xFF…` or `0` needs no special
+  casing.
+
+## Still TBD
+
+- **Record header field** — whether it carries anything besides the CRC
+  (flags; there is deliberately no stored length or field count).
 - **Record start marker / reserved keys** — a record-layer concern; the
   field layer stores keys opaquely. The values exploit the flash's own
   states and so are **relative to the key width**:
