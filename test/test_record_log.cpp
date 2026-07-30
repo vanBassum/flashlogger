@@ -22,7 +22,7 @@ TEST(RecordLog, a_record_takes_a_field) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record = log.WriteRecord();
+    auto record = log.createRecord();
     EXPECT_EQ(record.field(7, &value), FlashLogError::OK);
 }
 
@@ -33,10 +33,10 @@ TEST(RecordLog, a_second_record_cannot_open_while_one_is_still_open) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record_1 = log.WriteRecord();
+    auto record_1 = log.createRecord();
     ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
 
-    auto record_2 = log.WriteRecord();   // record_1 is still open
+    auto record_2 = log.createRecord();   // record_1 is still open
     EXPECT_EQ(record_2.field(8, &value), FlashLogError::RECORD_ALREADY_OPEN);
 }
 
@@ -48,11 +48,11 @@ TEST(RecordLog, the_destructor_closes_a_record_so_the_next_one_can_open) {
 
     uint32_t value = 0x11223344;
     {
-        auto record_1 = log.WriteRecord();
+        auto record_1 = log.createRecord();
         ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
     }   // no close() call — the destructor has to do it
 
-    auto record_2 = log.WriteRecord();
+    auto record_2 = log.createRecord();
     EXPECT_EQ(record_2.field(8, &value), FlashLogError::OK);
 }
 
@@ -63,11 +63,11 @@ TEST(RecordLog, close_ends_a_record_without_waiting_for_the_destructor) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record_1 = log.WriteRecord();
+    auto record_1 = log.createRecord();
     ASSERT_EQ(record_1.field(7, &value), FlashLogError::OK);
     ASSERT_EQ(record_1.close(), FlashLogError::OK);
 
-    auto record_2 = log.WriteRecord();       // record_1 still in scope, but closed
+    auto record_2 = log.createRecord();       // record_1 still in scope, but closed
     EXPECT_EQ(record_2.field(8, &value), FlashLogError::OK);
 }
 
@@ -78,7 +78,7 @@ TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_one_byte_keys) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record = log.WriteRecord();
+    auto record = log.createRecord();
     EXPECT_EQ(record.field(0xFF, &value), FlashLogError::ARG_INVALID);  // empty
     EXPECT_EQ(record.field(0x00, &value), FlashLogError::ARG_INVALID);  // tombstone
     EXPECT_EQ(record.field(0x01, &value), FlashLogError::ARG_INVALID);  // record start
@@ -91,7 +91,7 @@ TEST(RecordLog, a_field_cannot_use_a_reserved_key_with_four_byte_keys) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record = log.WriteRecord();
+    auto record = log.createRecord();
     EXPECT_EQ(record.field(0xFFFFFFFF, &value), FlashLogError::ARG_INVALID);  // empty
     EXPECT_EQ(record.field(0x00000000, &value), FlashLogError::ARG_INVALID);  // tombstone
     EXPECT_EQ(record.field(0x00000001, &value), FlashLogError::ARG_INVALID);  // record start
@@ -106,7 +106,7 @@ TEST(RecordLog, reserved_keys_scale_with_key_width) {
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record = log.WriteRecord();
+    auto record = log.createRecord();
     EXPECT_EQ(record.field(0xFF, &value), FlashLogError::OK);
 }
 

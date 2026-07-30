@@ -15,7 +15,7 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
 - **One record open at a time; the newcomer is refused (2026-07-29).** Because
   `field()` writes straight to flash with no RAM buffering, two interleaved
   records would interleave on flash. So a record must be closed before the next
-  opens, and while one is open `WriteRecord()` refuses — `field()` on that handle
+  opens, and while one is open `createRecord()` refuses — `field()` on that handle
   returns `RECORD_ALREADY_OPEN`. Chosen over the earlier sketch where the *older*
   handle went stale: nothing a caller holds ever dies under it. A record ends
   with `close()` or the destructor — both, deliberately: the destructor is the
@@ -67,10 +67,10 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
   [architecture.md](../architecture.md) puts thread safety entirely in the
   consumer's manager. Bas raised (2026-07-29) that the library itself needs to be
   thread-safe eventually, which reopens that. Not acted on yet. Note the overlap
-  with the stale-handle rule below: "opening a record invalidates the previous
-  handle" is single-threaded reasoning, and two threads each opening a record is
-  the same hazard wearing a different hat — so whichever way threading goes will
-  shape what a record handle is allowed to be.
+  with "one record open at a time" above: that rule is single-threaded reasoning,
+  and two threads each calling `createRecord()` is the same hazard wearing a
+  different hat — so whichever way threading goes will shape what a record handle
+  is allowed to be.
 - **Sector management** — reclaim policy and when erasing happens. The field
   layer exposes `clear`; the *policy* is a record-layer / reclaim concern.
 - **Field-layer read-back verify** — now that record integrity is a CRC,

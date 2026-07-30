@@ -40,7 +40,7 @@ public:
 
     // Fields go straight to flash, so only one record can be written at a time:
     // a second one has to wait until the first is closed.
-    RecordWriter WriteRecord()
+    RecordWriter createRecord()
     {
         if (record_open_)
             return RecordWriter(nullptr);

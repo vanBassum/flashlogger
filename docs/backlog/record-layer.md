@@ -34,7 +34,7 @@ _Placeholder. This is the bulk of the project (M2)._
   record that is closed). Needs either a second error value (`RECORD_CLOSED`) or
   a decision that one value is enough. Untested either way.
 - **Copying a `RecordWriter` would close the record twice.** Return-by-value from
-  `WriteRecord()` is elided so it does not bite today, but nothing forbids a copy.
+  `createRecord()` is elided so it does not bite today, but nothing forbids a copy.
   Deleting the copy constructor is the obvious fix — no test demands it yet.
 - **Does a *rejected* `format()` erase?** Today it does — the erase runs before
   the field layer validates the sizes, so `format(0, 4)` wipes the store and

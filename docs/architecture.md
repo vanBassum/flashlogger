@@ -53,10 +53,10 @@ Being built test-first; only what a test demanded exists so far —
 layer is an internal detail, so a consumer constructs and formats a
 `RecordLog` and never names a Field. `init()` forwards down; `format()`
 erases every sector first and then writes the header — a format always
-wipes the store. `WriteRecord()` hands back a `RecordWriter` (name
+wipes the store. `createRecord()` hands back a `RecordWriter` (name
 provisional) whose `field(key, value)` writes one Field. Fields go straight
 to flash — nothing is buffered in RAM — so only one record may be open at a
-time: while one is open, `WriteRecord()` hands back a refused handle whose
+time: while one is open, `createRecord()` hands back a refused handle whose
 `field()` returns `RECORD_ALREADY_OPEN`. A record ends via `close()` or,
 failing that, the destructor; `close()` is idempotent, and the explicit form
 exists because a destructor cannot report the error that back-filling a CRC
@@ -78,7 +78,10 @@ contents, iterator shape).
 - Fields stay trivial and independently testable; the record layer can
   be driven entirely from `RamFlash` tests, including torn-write
   recovery, without hardware.
-- Reserved keys (`0xFF` empty, `0x00` erased) are a **record-layer**
-  concern, not a field-layer one.
+- Reserved keys (empty / tombstone / record-start, width-relative — see
+  [flash-format.md](flash-format.md)) are a **record-layer** concern, not a
+  field-layer one.
 - Thread safety lives above the library entirely (in the consumer's
-  manager), not in either layer.
+  manager), not in either layer — though Bas has reopened whether the
+  library itself should be thread-safe; see
+  [ideas/design-decisions.md](ideas/design-decisions.md).
