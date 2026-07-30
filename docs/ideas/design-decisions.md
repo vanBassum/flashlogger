@@ -57,7 +57,29 @@ _Bas's to make (per CLAUDE.md); nothing is decided until locked in._
 2. **Iterator shape** — caller-owned handle; forward-only?; how a lapped handle
    reports invalidity. Leaning (2026-07-06): the handle stores a hash of the
    records it spawned; a later read or overwrite uses it to tell whether the
-   ring has since lapped/invalidated it.
+   ring has since lapped/invalidated it. Sharpened 2026-07-30 — see the read
+   path in [backlog/record-layer.md](../backlog/record-layer.md):
+   - The stamp can just be a **copy of the record's stored CRC**, compared
+     against the current one. That catches both a lap and an edit, costs one
+     field read, and needs no recomputation and no buffer.
+   - Validate **after** the read, not before (seqlock-style): a changed record
+     becomes an error instead of a bad value handed to the caller.
+   - It stays probabilistic — a lapped slot hides at 1-in-2^width, and width
+     comes from `valueSize`, so 1-byte values get CRC8 and 1-in-256 odds.
+     Exact detection would need a sequence number, for which every sector
+     already reserves 8 unused bytes.
+   - Only **reclaim** and **field edits** can alter a record under a reader;
+     plain appends land at the frontier and cannot. So the common
+     logger-appends/reader-reads case never conflicts.
+   - Thread safety is **orthogonal** — a stamp answers "did this change since I
+     looked", locking answers "can it change while I look". No hash width fixes
+     the check-then-act window.
+   - Backwards iteration costs no format change (scan back to the previous
+     marker), so deferring it carries no future regret.
+3. **Read-path details still open** (each marked **decide** in the backlog
+   read path): whether iteration skips never-committed records, where scanning
+   starts once the ring exists, what happens when a caller's buffer is too
+   small for a merged value, and what a non-adjacent repeat of a key means.
 
 ## Other open questions
 
