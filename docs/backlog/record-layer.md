@@ -35,13 +35,16 @@ forgotten; items get deleted once implemented.
       `RECORD_CLOSED`? Writing to a closed handle currently reports "already
       open".
 - [ ] Should the library itself be thread-safe? Currently the caller's job.
+- [ ] What should `format()` do while a record is open? It wipes and resets the
+      cursor but leaves `record_open_` set, so `createRecord()` refuses
+      afterwards — forever. Untested, undecided: refuse the format, or close the
+      record first.
+- [ ] A failed `field()` write still advances the cursor: `next_index_++` is
+      evaluated in the call, so a `FLASH_WRITE_ERROR` skips a position instead of
+      retrying it. Harmless for the out-of-bounds case, wrong for a real fault.
 
-## Tests we owe (now unblocked — reading exists)
+## Tests we owe
 
-- [ ] `format()` wipes the store. Real version: append records → `format()` →
-      append one record → iterate finds exactly that one. Without the wipe the
-      append point lands past the stale data.
-- [ ] A *rejected* `field()` wrote nothing and left the cursor alone.
 - [ ] `read()`'s "key not found" currently returns `ARG_INVALID` as a
       placeholder, and running off the end of the store returns
       `ARG_OUT_OF_BOUNDS` — two different answers to the same question, neither

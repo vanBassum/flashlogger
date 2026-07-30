@@ -192,6 +192,91 @@ TEST(RecordLog, reserved_keys_scale_with_key_width) {
     EXPECT_EQ(record.field(0xFF, &value, sizeof(value)), FlashLogError::OK);
 }
 
+TEST(RecordLog, format_leaves_no_trace_of_earlier_records) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t old_value = 0x11223344;
+    for (int i = 0; i < 3; i++) {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &old_value, sizeof(old_value)), FlashLogError::OK);
+    }
+
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);      // wipe
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t fresh = 0x55667788;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(9, &fresh, sizeof(fresh)), FlashLogError::OK);
+    }
+
+    auto reader = log.firstRecord();
+
+    uint32_t out = 0;                                    // the fresh record IS the first record
+    EXPECT_EQ(reader.read(9, &out, sizeof(out)), FlashLogError::OK);
+    EXPECT_EQ(out, 0x55667788u);
+
+    EXPECT_NE(reader.read(7, &out, sizeof(out)), FlashLogError::OK);  // nothing from before
+}
+
+TEST(RecordLog, a_rejected_field_does_not_consume_a_position) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value     = 0x11223344;
+    uint16_t too_small = 0x1122;
+
+    auto record = log.createRecord();
+    ASSERT_EQ(record.field(0xFF, &value, sizeof(value)), FlashLogError::ARG_INVALID);
+    ASSERT_EQ(record.field(7, &too_small, sizeof(too_small)), FlashLogError::ARG_INVALID);
+    ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
+    ASSERT_EQ(record.close(), FlashLogError::OK);
+
+    // A rejected field that had eaten a position would leave an empty field
+    // between the marker and key 7, and the reader would stop there.
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
+    EXPECT_EQ(out, 0x11223344u);
+}
+
+TEST(RecordLog, writing_and_reading_are_refused_before_init) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    // deliberately no init()
+
+    uint32_t value = 0x11223344;
+    auto record = log.createRecord();
+    EXPECT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::STORE_NOT_INITIALIZED);
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::STORE_NOT_INITIALIZED);
+}
+
+// The "never derails on any flash contents" promise, smallest version: a store
+// with no empty field left must still make a read return rather than spin.
+TEST(RecordLog, a_read_terminates_on_a_store_with_no_empty_field) {
+    RamFlash<512, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.createRecord();
+    while (record.field(7, &value, sizeof(value)) == FlashLogError::OK) { }  // fill it up
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_NE(reader.read(9, &out, sizeof(out)), FlashLogError::OK);   // returns, doesn't hang
+}
+
 TEST(RecordLog, a_rejected_format_leaves_the_store_unformatted) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);

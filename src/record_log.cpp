@@ -83,6 +83,12 @@ FlashLogError RecordLog::format(size_t key_size, size_t value_size)
     size_t sector_size = flash_.getSectorSize();
     for (size_t address = 0; address < flash_.getSize(); address += sector_size)
         flash_.erase(static_cast<uint32_t>(address), 0);
+
+    // The cursor has to come back with it. Erasing alone left it past the data
+    // that was just wiped, so the next record was written into the middle of an
+    // empty store and nothing could find it.
+    next_index_ = 0;
+
     return store_.format(key_size, value_size);
 }
 
