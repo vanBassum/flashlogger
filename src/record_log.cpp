@@ -303,6 +303,47 @@ FlashLogError RecordLog::format(size_t key_size, size_t value_size)
     return store_.format(key_size, value_size);
 }
 
+uint32_t RecordLog::totalFields() const
+{
+    size_t sectors = flash_.getSize() / flash_.getSectorSize();
+    return store_.fieldsPerUnit() * static_cast<uint32_t>(sectors);
+}
+
+// The ring keeps one sector erased at all times: on stepping into a sector, the
+// *next* one is erased. That erased sector is the gap, and the gap is what makes
+// the append point findable after a reboot without storing any metadata. Erasing
+// it is also the reclaim — the sector ahead holds the oldest records.
+void RecordLog::reclaimAhead()
+{
+    uint32_t per = store_.fieldsPerUnit();
+    if (per == 0 || next_index_ % per != 0)
+        return;                          // not stepping into a sector
+
+    uint32_t ahead = (next_index_ + per) % totalFields();
+
+    // Skip the erase if it is already erased — on the first lap every sector is,
+    // and erases cost flash life.
+    uint32_t key = 0;
+    uint8_t  value[MAX_VALUE_SIZE];
+    if (store_.read(ahead, &key, value) != FlashLogError::OK)
+        return;
+    if (classify_key(key, store_.keySize()) != KeyKind::Empty)
+        store_.clear(ahead, per);
+}
+
+// Hands out the next field position, wrapping at the end of the store.
+uint32_t RecordLog::takeSlot()
+{
+    uint32_t total = totalFields();
+    if (total == 0)
+        return next_index_;              // not mounted; the write will say so
+
+    reclaimAhead();
+    uint32_t slot = next_index_;
+    next_index_ = (next_index_ + 1) % total;
+    return slot;
+}
+
 // Fields go straight to flash, so only one record can be written at a time:
 // a second one has to wait until the first is closed.
 RecordWriter RecordLog::createRecord()
@@ -316,8 +357,8 @@ RecordWriter RecordLog::createRecord()
     // back-filled on close.
     uint8_t placeholder[MAX_VALUE_SIZE];
     memset(placeholder, 0xFF, store_.valueSize());
-    record_start_ = next_index_;
-    store_.write(next_index_++, KEY_MARKER, placeholder);
+    record_start_ = takeSlot();
+    store_.write(record_start_, KEY_MARKER, placeholder);
 
     return RecordWriter(this);
 }
@@ -336,7 +377,7 @@ FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t valu
         return FlashLogError::ARG_INVALID;
     if (classify_key(key, store_.keySize()) != KeyKind::Data)
         return FlashLogError::ARG_INVALID;   // user fields must not look like framing
-    return store_.write(next_index_++, key, value);
+    return store_.write(takeSlot(), key, value);
 }
 
 // Committing = back-filling the marker's value, which was left erased when the

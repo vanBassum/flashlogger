@@ -52,6 +52,10 @@ private:
     FlashLogError writeField(uint32_t key, const void* value, size_t value_size);
     FlashLogError closeRecord();
 
+    uint32_t totalFields() const;
+    void     reclaimAhead();
+    uint32_t takeSlot();
+
     IFlash&    flash_;
     FieldStore store_;
     bool       record_open_  = false;

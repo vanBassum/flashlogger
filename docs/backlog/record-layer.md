@@ -3,25 +3,40 @@
 Reasoning lives in `docs/reasoning/`. This is just a list so things don't get
 forgotten; items get deleted once implemented.
 
-## Ring behaviour — not yet, but critical to get right
+## Ring behaviour — writes wrap; reading a wrapped store does not work yet
 
-Everything below assumes a linear store. It is wrong once the log wraps, and
-these are the specific places that break:
+Writes now wrap and reclaim: stepping into a sector erases the *next* one, so one
+erased sector always sits ahead of the cursor. That gap is the boundary marker —
+no metadata to keep, nothing to half-update on power loss. Decided over sequence
+numbers in the reserved header bytes, which stay available if exactness is ever
+needed (no format change).
 
-- [ ] **The oldest record is not at index 0.** It can be at field 1000.
-      `firstRecord()` hardcodes 0.
-- [ ] **`init()`'s append-point scan is linear-only.** It walks from 0 to the
-      first empty field. After a wrap that pattern doesn't hold.
-- [ ] **Walks must wrap, so they can no longer end on the field layer's
-      out-of-bounds error.** Termination currently *borrows* that bound; a
-      wrapping walk continues at 0 instead, so the record layer needs its own
-      step budget of at most the total field count.
-- [ ] **Decide: how to tell newest from oldest.** On a full store, scanning alone
-      cannot. Either keep one sector always erased so the gap *is* the boundary
-      (append point just before it, oldest just after — no metadata, costs one
-      sector, nothing to update on power loss), or put sequence numbers in the
-      per-sector header bytes already reserved (exact, more moving parts).
-      Leaning: the gap.
+Still broken or unproven, in rough order:
+
+- [ ] **Reading a wrapped store.** All the walks still assume linear: they end on
+      the field layer's out-of-bounds error instead of continuing at 0. Each one
+      needs to wrap *and* carry its own step budget (at most the total field
+      count), since the borrowed bound disappears.
+- [ ] **The oldest record is not at index 0** once wrapped. `firstRecord()`
+      hardcodes 0.
+- [ ] **`init()`'s append-point scan is linear-only** — it walks from 0 to the
+      first empty field, which isn't where the frontier is after a wrap. It
+      should find the written→empty transition wherever it is.
+- [ ] **A record spanning a reclaimed boundary loses its own marker.** Seen for
+      real: on a 2-sector store the erase-ahead wiped the marker of the record
+      being written, and `RamFlash` caught the illegal write. This is the
+      "dangling fields" hazard from the reasoning log, and the tombstone cleanup
+      is the fix.
+- [ ] **Minimum sector count.** With 2 sectors, "erase one ahead" erases the
+      sector the cursor just left, so nothing survives and boundary-spanning
+      records break. Decide the minimum (3? 4?) and enforce it in `format()`.
+- [ ] **A record longer than the ring** eats its own start. No guard.
+- [ ] **Erase-ahead erases the sector ahead of the cursor, which is only the
+      oldest data when there are enough sectors.** Check the arithmetic holds for
+      the minimum once it's chosen.
+- [ ] Power loss *during* an erase can leave a second gap, making the boundary
+      ambiguous. Mount recovery has to resolve it — finishing the interrupted
+      erase is safe, but working out which gap was in progress isn't obvious.
 
 ## Build
 

@@ -260,17 +260,20 @@ TEST(RecordLog, writing_and_reading_are_refused_before_init) {
     EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::STORE_NOT_INITIALIZED);
 }
 
-// The "never derails on any flash contents" promise, smallest version: a store
-// with no empty field left must still make a read return rather than spin.
-TEST(RecordLog, a_read_terminates_on_a_store_with_no_empty_field) {
-    RamFlash<512, 256> flash;
+// The "never derails on any flash contents" promise, smallest version: a read
+// over a stuffed store must return rather than spin. The fill is a bounded count
+// rather than "write until it refuses" — in a ring, writes never refuse.
+TEST(RecordLog, a_read_over_a_stuffed_store_terminates) {
+    RamFlash<1024, 256> flash;
     RecordLog log(flash);
     ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
     ASSERT_EQ(log.init(), FlashLogError::OK);
 
     uint32_t value = 0x11223344;
-    auto record = log.createRecord();
-    while (record.field(7, &value, sizeof(value)) == FlashLogError::OK) { }  // fill it up
+    for (int i = 0; i < 200; i++) {          // 4 sectors x 49 fields = 196 fields
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
+    }
 
     auto reader = log.firstRecord();
     uint32_t out = 0;
@@ -484,4 +487,19 @@ TEST(RecordLog, a_corrupt_record_does_not_stop_iteration) {
     ASSERT_EQ(reader.next(), FlashLogError::OK);        // past the corrupt one
     EXPECT_EQ(reader.read(9, &out, sizeof(out)), FlashLogError::OK);
     EXPECT_EQ(out, 0x0A0B0C0Du);
+}
+
+// A ring keeps accepting data forever: filling up reclaims the oldest sector
+// rather than refusing the write. 4 sectors x 49 fields = 196 fields, and a
+// one-field record costs 2 (marker + data), so 200 records forces two laps.
+TEST(RecordLog, the_log_keeps_accepting_records_when_it_fills_up) {
+    RamFlash<1024, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    for (uint32_t i = 1; i <= 200; i++) {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK) << "at record " << i;
+    }
 }
