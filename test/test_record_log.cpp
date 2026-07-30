@@ -680,3 +680,44 @@ TEST(RecordLog, a_format_refused_for_too_few_sectors_erases_nothing) {
     EXPECT_EQ(back[0], 0xDE);
     EXPECT_EQ(back[3], 0xEF);
 }
+
+// 49 fields per sector and 2 fields per record, so 49 records land the cursor
+// exactly on a sector boundary — the tightest case for finding where the log ends.
+TEST(RecordLog, the_start_is_still_found_when_the_cursor_sits_on_a_sector_edge) {
+    RamFlash<1024, 256> flash;
+
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        for (uint32_t i = 1; i <= 49; i++) {
+            auto record = log.createRecord();
+            ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        }
+    }
+
+    RecordLog reopened(flash);
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+
+    uint32_t next_one = 50;
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(7, &next_one, sizeof(next_one)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        if (reader.read(7, &out, sizeof(out)) == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "out of age order at record " << seen;
+            previous = out;
+            seen++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_EQ(previous, 50u) << "newest missing; reached " << seen;
+    EXPECT_EQ(seen, 50)      << "expected all 50 records, nothing reclaimed yet";
+}
