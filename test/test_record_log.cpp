@@ -781,3 +781,49 @@ TEST(RecordLog, records_that_straddle_a_sector_edge_survive_reclaim) {
     EXPECT_EQ(corrupt, 0) << corrupt << " records read as corrupt";
     EXPECT_EQ(previous, 200u) << "newest missing; reached " << seen;
 }
+
+// Bas's case: the log is full, a sector is reclaimed, and the refill lands exactly
+// on that sector's last field. 147 records of 2 slots each is 294 slots, so with
+// 196 slots and 49 per sector the cursor stops precisely on a sector boundary
+// after a lap and a half.
+TEST(RecordLog, refilling_a_reclaimed_sector_to_its_exact_edge_is_safe) {
+    RamFlash<1024, 256> flash;
+
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        for (uint32_t i = 1; i <= 147; i++) {
+            auto record = log.createRecord();
+            ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        }
+    }
+
+    RecordLog reopened(flash);              // forces the append point to be re-found
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+
+    uint32_t next_one = 148;
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(7, &next_one, sizeof(next_one)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0, corrupt = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        FlashLogError err = reader.read(7, &out, sizeof(out));
+        if (err == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "out of age order at record " << seen;
+            previous = out;
+            seen++;
+        } else if (err == FlashLogError::RECORD_CORRUPT) {
+            corrupt++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_EQ(corrupt, 0) << corrupt << " records read as corrupt";
+    EXPECT_EQ(previous, 148u) << "newest missing; reached " << seen;
+}
