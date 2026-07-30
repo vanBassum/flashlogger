@@ -721,3 +721,27 @@ TEST(RecordLog, the_start_is_still_found_when_the_cursor_sits_on_a_sector_edge) 
     EXPECT_EQ(previous, 50u) << "newest missing; reached " << seen;
     EXPECT_EQ(seen, 50)      << "expected all 50 records, nothing reclaimed yet";
 }
+
+// A record long enough to come round the ring would reach its own marker — the
+// only way left to lose the boundary that tells us where the log starts. It has to
+// be refused before it gets there.
+TEST(RecordLog, a_record_cannot_grow_long_enough_to_eat_its_own_start) {
+    RamFlash<1024, 256> flash;                    // 196 fields, 49 per sector
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.createRecord();
+
+    FlashLogError err = FlashLogError::OK;
+    int written = 0;
+    while (err == FlashLogError::OK && written < 1000) {
+        err = record.field(7, &value, sizeof(value));
+        if (err == FlashLogError::OK)
+            written++;
+    }
+
+    EXPECT_EQ(err, FlashLogError::RECORD_TOO_LONG);
+    EXPECT_LT(written, 196) << "wrote " << written << " fields into a 196-field ring";
+}

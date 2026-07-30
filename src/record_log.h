@@ -64,6 +64,7 @@ private:
     IFlash&    flash_;
     FieldStore store_;
     bool       record_open_  = false;
-    uint32_t   next_index_   = 0;
-    uint32_t   record_start_ = 0;   // index of the open record's marker field
+    uint32_t   next_index_    = 0;
+    uint32_t   record_start_  = 0;  // index of the open record's marker field
+    uint32_t   record_fields_ = 0;  // slots the open record occupies, marker included
 };

@@ -32,7 +32,6 @@ Still broken or unproven, in rough order:
       being written, and `RamFlash` caught the illegal write. This is the
       "dangling fields" hazard from the reasoning log, and the tombstone cleanup
       is the fix.
-- [ ] **A record longer than the ring** eats its own start. No guard.
 - [ ] With exactly 3 sectors the ring keeps only about one sector of history, and
       every step into a new sector reclaims. Works, but check it is really usable
       before promising it.

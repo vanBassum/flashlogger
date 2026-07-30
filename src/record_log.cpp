@@ -444,7 +444,8 @@ RecordWriter RecordLog::createRecord()
     // back-filled on close.
     uint8_t placeholder[MAX_VALUE_SIZE];
     memset(placeholder, 0xFF, store_.valueSize());
-    record_start_ = takeSlot();
+    record_start_  = takeSlot();
+    record_fields_ = 1;                  // the marker itself
     store_.write(record_start_, KEY_MARKER, placeholder);
 
     return RecordWriter(this);
@@ -480,7 +481,21 @@ FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t valu
         return FlashLogError::ARG_INVALID;
     if (classify_key(key, store_.keySize()) != KeyKind::Data)
         return FlashLogError::ARG_INVALID;   // user fields must not look like framing
-    return store_.write(takeSlot(), key, value);
+
+    // A record must stay short enough that reclaim never reaches its own marker.
+    // The marker's sector is erased once the cursor enters the sector before it,
+    // which is at most (ring - one sector) fields after the record started, so
+    // staying under that keeps the marker alive for the record's whole life.
+    // Without this a record silently laps the ring and overwrites its own start.
+    // reach is 0 on an unmounted store; leave the field layer to say so.
+    uint32_t reach = totalFields() - store_.fieldsPerUnit();
+    if (reach > 0 && record_fields_ + 1 >= reach)
+        return FlashLogError::RECORD_TOO_LONG;
+
+    FlashLogError err = store_.write(takeSlot(), key, value);
+    if (err == FlashLogError::OK)
+        record_fields_++;
+    return err;
 }
 
 // Committing = back-filling the marker's value, which was left erased when the
