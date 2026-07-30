@@ -39,8 +39,30 @@ TEST(RecordLog, a_field_reads_back_what_was_written) {
 
     auto reader = log.firstRecord();
     uint32_t out = 0;
-    EXPECT_EQ(reader.read(7, &out), FlashLogError::OK);
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
     EXPECT_EQ(out, 0x11223344u);
+}
+
+TEST(RecordLog, read_refuses_a_buffer_too_small_for_the_value) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);   // 4-byte values
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &value), FlashLogError::OK);
+    }
+
+    auto reader = log.firstRecord();
+
+    uint16_t too_small = 0;
+    EXPECT_EQ(reader.read(7, &too_small, sizeof(too_small)), FlashLogError::ARG_INVALID);
+
+    uint32_t big_enough = 0;                          // the right size still works
+    EXPECT_EQ(reader.read(7, &big_enough, sizeof(big_enough)), FlashLogError::OK);
+    EXPECT_EQ(big_enough, 0x11223344u);
 }
 
 TEST(RecordLog, reading_one_record_does_not_find_another_records_field) {
@@ -64,10 +86,10 @@ TEST(RecordLog, reading_one_record_does_not_find_another_records_field) {
     auto reader = log.firstRecord();
 
     uint32_t out = 0;
-    EXPECT_NE(reader.read(8, &out), FlashLogError::OK);   // key 8 is record 2's
+    EXPECT_NE(reader.read(8, &out, sizeof(out)), FlashLogError::OK);   // key 8 is record 2's
 
     uint32_t own = 0;                                     // record 1's own field still reads
-    EXPECT_EQ(reader.read(7, &own), FlashLogError::OK);
+    EXPECT_EQ(reader.read(7, &own, sizeof(own)), FlashLogError::OK);
     EXPECT_EQ(own, 0x11223344u);
 }
 

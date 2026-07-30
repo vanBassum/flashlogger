@@ -23,8 +23,13 @@ RecordReader::RecordReader(FieldStore& store, uint32_t start)
 // Walks this record's fields looking for the key, starting after the marker and
 // stopping at whatever ends the record. Bounded by the field layer, which
 // refuses an index past the end of the store.
-FlashLogError RecordReader::read(uint32_t key, void* value_out)
+FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out_size)
 {
+    // Refuse up front rather than overrunning the caller's buffer: the field
+    // layer always reads a whole value_size worth of bytes.
+    if (value_out_size < store_.valueSize())
+        return FlashLogError::ARG_INVALID;
+
     for (uint32_t index = start_ + 1; ; index++) {
         uint32_t      found = 0;
         FlashLogError err   = store_.read(index, &found, value_out);

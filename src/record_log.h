@@ -13,7 +13,7 @@ class RecordReader {
 public:
     RecordReader(FieldStore& store, uint32_t start);
 
-    FlashLogError read(uint32_t key, void* value_out);
+    FlashLogError read(uint32_t key, void* value_out, size_t value_out_size);
 
 private:
     FieldStore& store_;

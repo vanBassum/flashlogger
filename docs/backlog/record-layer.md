@@ -48,10 +48,14 @@ forgotten; items get deleted once implemented.
       tested. Needs a real error and a decision.
 - [ ] `read()` clobbers the caller's `value_out` while walking, even when the key
       is never found. Harmless today, ugly contract.
-- [ ] `firstRecord()` ignores the marker (there isn't one yet) and scans from
-      index 0, so it finds any field in the store, not the fields of the *first
-      record*. Correct only while one record exists — the second record is what
-      forces the marker.
+- [ ] `read()` takes a buffer size and refuses one smaller than `valueSize`, but
+      the size is only a floor check — once a value can span several fields it
+      has to bound the *merge* too.
+- [ ] `firstRecord()` assumes the first record starts at index 0. True while
+      `format()` wipes and appends start there; wrong once reclaim can leave
+      tombstones ahead of it, which is when the scan becomes necessary.
+- [ ] `createRecord()` ignores the result of writing the marker — there is no
+      error channel, since it returns a handle rather than a status.
 
 ## Decide — inherited from the deleted design-decisions.md
 
