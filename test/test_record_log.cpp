@@ -43,6 +43,34 @@ TEST(RecordLog, a_field_reads_back_what_was_written) {
     EXPECT_EQ(out, 0x11223344u);
 }
 
+TEST(RecordLog, reading_one_record_does_not_find_another_records_field) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t first = 0x11223344;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &first), FlashLogError::OK);
+    }
+
+    uint32_t second = 0x55667788;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(8, &second), FlashLogError::OK);
+    }
+
+    auto reader = log.firstRecord();
+
+    uint32_t out = 0;
+    EXPECT_NE(reader.read(8, &out), FlashLogError::OK);   // key 8 is record 2's
+
+    uint32_t own = 0;                                     // record 1's own field still reads
+    EXPECT_EQ(reader.read(7, &own), FlashLogError::OK);
+    EXPECT_EQ(own, 0x11223344u);
+}
+
 TEST(RecordLog, a_second_record_cannot_open_while_one_is_still_open) {
     RamFlash<4096, 256> flash;
     RecordLog log(flash);

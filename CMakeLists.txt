@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(flashlogger STATIC
     src/field_store.cpp
+    src/record_log.cpp
 )
 target_include_directories(flashlogger PUBLIC src)
 
