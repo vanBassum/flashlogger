@@ -446,3 +446,42 @@ TEST(RecordLog, next_skips_a_torn_record) {
     EXPECT_EQ(reader.read(9, &out, sizeof(out)), FlashLogError::OK);
     EXPECT_EQ(out, 0x55667788u);
 }
+
+// A corrupt record is reported, but it must not wall off the records behind it:
+// next() still moves past it. Only the caller decides whether to stop.
+TEST(RecordLog, a_corrupt_record_does_not_stop_iteration) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t first = 0x11223344, second = 0x55667788, third = 0x0A0B0C0D;
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &first, sizeof(first)), FlashLogError::OK);
+    }
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(8, &second, sizeof(second)), FlashLogError::OK);
+    }
+    {
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(9, &third, sizeof(third)), FlashLogError::OK);
+    }
+
+    // Rot a byte of record 2's value: field index 3, at 8 (sector header) + 3*5,
+    // one byte in for the value.
+    uint8_t cleared = 0x00;
+    flash.write(8 + 3 * 5 + 1, &cleared, 1, 0);
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    ASSERT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
+
+    ASSERT_EQ(reader.next(), FlashLogError::OK);
+    EXPECT_EQ(reader.read(8, &out, sizeof(out)), FlashLogError::RECORD_CORRUPT);
+
+    ASSERT_EQ(reader.next(), FlashLogError::OK);        // past the corrupt one
+    EXPECT_EQ(reader.read(9, &out, sizeof(out)), FlashLogError::OK);
+    EXPECT_EQ(out, 0x0A0B0C0Du);
+}
