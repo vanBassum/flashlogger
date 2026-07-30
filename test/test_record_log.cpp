@@ -649,3 +649,34 @@ TEST(RecordLog, the_log_recovers_from_an_erase_interrupted_by_power_loss) {
 
     EXPECT_EQ(previous, 151u) << "newest record missing; reached " << seen << " records";
 }
+
+// The ring needs one sector always erased, one being written, and one holding
+// older records. With two, "erase the next sector" erases the one just left, which
+// destroys a record still being written. Three is the floor.
+TEST(RecordLog, format_refuses_a_flash_with_too_few_sectors) {
+    RamFlash<512, 256> flash;                     // 2 sectors
+    RecordLog log(flash);
+    EXPECT_EQ(log.format(1, 4), FlashLogError::ARG_INVALID);
+}
+
+TEST(RecordLog, format_accepts_the_smallest_workable_flash) {
+    RamFlash<768, 256> flash;                     // 3 sectors
+    RecordLog log(flash);
+    EXPECT_EQ(log.format(1, 4), FlashLogError::OK);
+    EXPECT_EQ(log.init(), FlashLogError::OK);
+}
+
+// A refused format must not have wiped anything on its way out.
+TEST(RecordLog, a_format_refused_for_too_few_sectors_erases_nothing) {
+    RamFlash<512, 256> flash;
+    uint8_t marker[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+    flash.write(300, marker, 4, 0);
+
+    RecordLog log(flash);
+    EXPECT_EQ(log.format(1, 4), FlashLogError::ARG_INVALID);
+
+    uint8_t back[4] = {0, 0, 0, 0};
+    flash.read(300, back, 4, 0);
+    EXPECT_EQ(back[0], 0xDE);
+    EXPECT_EQ(back[3], 0xEF);
+}

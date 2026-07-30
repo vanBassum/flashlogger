@@ -11,6 +11,10 @@ static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
 
 static constexpr size_t MAX_VALUE_SIZE = 255;  // value_size is stored in a uint8_t
 
+// One sector erased ahead of the cursor, one being written, one holding older
+// records. Fewer than that and reclaim eats the sector it just left.
+static constexpr size_t MIN_SECTORS = 3;
+
 // NOT STANDARD CRC BEHAVIOUR — read this before touching the CRC code.
 //
 // Two *stored* CRC values carry extra meaning, and it is easy to skip over:
@@ -360,6 +364,14 @@ FlashLogError RecordLog::init()
 FlashLogError RecordLog::format(size_t key_size, size_t value_size)
 {
     size_t sector_size = flash_.getSectorSize();
+
+    // The ring needs three sectors: one always erased ahead of the cursor, one
+    // being written, and one still holding older records. With two, erasing the
+    // next sector erases the one just left — which can take the marker of the
+    // record being written with it. Checked before the erase, so a refused format
+    // leaves the flash alone.
+    if (flash_.getSize() / sector_size < MIN_SECTORS)
+        return FlashLogError::ARG_INVALID;
     for (size_t address = 0; address < flash_.getSize(); address += sector_size)
         flash_.erase(static_cast<uint32_t>(address), 0);
 

@@ -32,13 +32,10 @@ Still broken or unproven, in rough order:
       being written, and `RamFlash` caught the illegal write. This is the
       "dangling fields" hazard from the reasoning log, and the tombstone cleanup
       is the fix.
-- [ ] **Minimum sector count.** With 2 sectors, "erase one ahead" erases the
-      sector the cursor just left, so nothing survives and boundary-spanning
-      records break. Decide the minimum (3? 4?) and enforce it in `format()`.
 - [ ] **A record longer than the ring** eats its own start. No guard.
-- [ ] **Erase-ahead erases the sector ahead of the cursor, which is only the
-      oldest data when there are enough sectors.** Check the arithmetic holds for
-      the minimum once it's chosen.
+- [ ] With exactly 3 sectors the ring keeps only about one sector of history, and
+      every step into a new sector reclaims. Works, but check it is really usable
+      before promising it.
 - [ ] `init()` now walks the whole store twice — once to spot a half-erased
       sector, once to find the append point. Fine for correctness, wasteful at
       mount. The cached start/end pointers would fold both into one pass.
@@ -59,9 +56,10 @@ Still broken or unproven, in rough order:
       report the size needed?
 - [ ] What does a *non-adjacent* repeat of a key mean? Adjacent repeats are one
       long value, but key 7 … key 9 … key 7 could be one value or two.
-- [ ] Does a *rejected* `format()` erase? Today it does — the erase runs before
-      the field layer validates, so `format(0, 4)` wipes the store and returns
-      `ARG_INVALID`.
+- [ ] Does a *rejected* `format()` erase? The too-few-sectors check runs before
+      the erase, so that one is safe and tested. Bad *sizes* are still validated by
+      the field layer after the erase, so `format(0, 4)` still wipes the store and
+      then returns `ARG_INVALID`.
 - [ ] Is `RECORD_ALREADY_OPEN` enough, or does a closed record need
       `RECORD_CLOSED`? Writing to a closed handle currently reports "already
       open".
