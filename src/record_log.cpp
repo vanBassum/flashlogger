@@ -10,6 +10,11 @@ static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
 
 static constexpr size_t MAX_VALUE_SIZE = 255;  // value_size is stored in a uint8_t
 
+// Temporary commit stamp, written into the marker's value by close(). To be
+// replaced by the record's CRC in the next step. Deliberately neither 0xFF
+// (means never committed) nor 0x00 (reserved for "deliberately edited").
+static constexpr uint8_t COMMIT_STAMP = 0xFE;
+
 static constexpr uint32_t empty_key(uint8_t key_size)
 {
     return key_size >= 4 ? 0xFFFFFFFFu : (1u << (8 * key_size)) - 1u;
@@ -29,6 +34,20 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
     // layer always reads a whole value_size worth of bytes.
     if (value_out_size < store_.valueSize())
         return FlashLogError::ARG_INVALID;
+
+    // The marker's value is the commit stamp. Still erased means close() never
+    // ran, so this record is torn and must not be handed out.
+    uint32_t      marker = 0;
+    uint8_t       stamp[MAX_VALUE_SIZE];
+    FlashLogError err = store_.read(start_, &marker, stamp);
+    if (err != FlashLogError::OK)
+        return err;
+    bool committed = false;
+    for (uint8_t i = 0; i < store_.valueSize(); i++)
+        if (stamp[i] != 0xFF)
+            committed = true;
+    if (!committed)
+        return FlashLogError::RECORD_TORN;
 
     for (uint32_t index = start_ + 1; ; index++) {
         uint32_t      found = 0;
@@ -65,9 +84,9 @@ FlashLogError RecordWriter::close()
 {
     if (!log_)
         return FlashLogError::RECORD_ALREADY_OPEN;
-    log_->closeRecord();
+    RecordLog* log = log_;
     log_ = nullptr;
-    return FlashLogError::OK;
+    return log->closeRecord();
 }
 
 RecordLog::RecordLog(IFlash& flash)
@@ -105,6 +124,7 @@ RecordWriter RecordLog::createRecord()
     // back-filled on close.
     uint8_t placeholder[MAX_VALUE_SIZE];
     memset(placeholder, 0xFF, store_.valueSize());
+    record_start_ = next_index_;
     store_.write(next_index_++, KEY_MARKER, placeholder);
 
     return RecordWriter(this);
@@ -127,4 +147,13 @@ FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t valu
     return store_.write(next_index_++, key, value);
 }
 
-void RecordLog::closeRecord() { record_open_ = false; }
+// Committing = back-filling the marker's value, which was left erased when the
+// record opened. Legal on NOR: it only clears bits.
+FlashLogError RecordLog::closeRecord()
+{
+    record_open_ = false;
+
+    uint8_t stamp[MAX_VALUE_SIZE];
+    memset(stamp, COMMIT_STAMP, store_.valueSize());
+    return store_.write(record_start_, KEY_MARKER, stamp);
+}

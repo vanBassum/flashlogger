@@ -49,10 +49,11 @@ private:
     friend class RecordWriter;
 
     FlashLogError writeField(uint32_t key, const void* value, size_t value_size);
-    void          closeRecord();
+    FlashLogError closeRecord();
 
     IFlash&    flash_;
     FieldStore store_;
-    bool       record_open_ = false;
-    uint32_t   next_index_  = 0;
+    bool       record_open_  = false;
+    uint32_t   next_index_   = 0;
+    uint32_t   record_start_ = 0;   // index of the open record's marker field
 };

@@ -293,3 +293,19 @@ TEST(RecordLog, init_tells_junk_apart_from_blank_flash) {
 }
 
 
+
+TEST(RecordLog, an_unclosed_record_cannot_be_read) {
+    RamFlash<4096, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    uint32_t value = 0x11223344;
+    auto record = log.createRecord();
+    ASSERT_EQ(record.field(7, &value, sizeof(value)), FlashLogError::OK);
+    // deliberately never closed
+
+    auto reader = log.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::RECORD_TORN);
+}
