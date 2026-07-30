@@ -198,7 +198,34 @@ RecordLog::RecordLog(IFlash& flash)
 {
 }
 
-FlashLogError RecordLog::init() { return store_.init(); }
+FlashLogError RecordLog::init()
+{
+    FlashLogError err = store_.init();
+    if (err != FlashLogError::OK)
+        return err;
+
+    // Work out where writing left off, or a reopened log restarts at 0 and
+    // writes over the records already there. The append point is the frontier
+    // between written fields and erased ones — structural, so it needs no CRC
+    // and works even if the last record was torn.
+    next_index_ = 0;
+    for (uint32_t index = 0; ; index++) {
+        uint32_t key = 0;
+        uint8_t  value[MAX_VALUE_SIZE];
+
+        err = store_.read(index, &key, value);
+        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
+            break;                                  // the store is full
+        if (err != FlashLogError::OK)
+            return err;
+        if (key == empty_key(store_.keySize()))
+            break;                                  // first never-written field
+
+        next_index_ = index + 1;
+    }
+
+    return FlashLogError::OK;
+}
 
 // A format wipes the store: every sector is erased, then the header written.
 FlashLogError RecordLog::format(size_t key_size, size_t value_size)

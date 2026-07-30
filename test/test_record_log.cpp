@@ -333,3 +333,32 @@ TEST(RecordLog, a_corrupted_record_is_reported_not_returned) {
     uint32_t out = 0;
     EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::RECORD_CORRUPT);
 }
+
+// After a reboot the log has to work out where writing left off. Without that,
+// the cursor restarts at 0 and the next record is written over the first one.
+TEST(RecordLog, reopening_continues_after_the_last_record) {
+    RamFlash<4096, 256> flash;
+
+    uint32_t first = 0x11223344;
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &first, sizeof(first)), FlashLogError::OK);
+    }
+
+    RecordLog reopened(flash);              // fresh object, same flash
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+
+    uint32_t second = 0x55667788;
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(8, &second, sizeof(second)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();   // record 1 must be untouched
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
+    EXPECT_EQ(out, 0x11223344u);
+}
