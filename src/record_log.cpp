@@ -6,6 +6,11 @@
 // opaquely and knows nothing of these. They exploit the flash's own states, so
 // "empty" is all-ones for the key width — with 4-byte keys that is 0xFFFFFFFF
 // and a plain 0xFF is ordinary user data.
+// KEY_ERASED is deliberately reserved even though nothing writes it. Clearing bits
+// to zero is the only edit flash allows, so an all-zero key is the only way to kill
+// a single field without erasing a sector — and the tombstone becomes necessary
+// again if the reclaim erase-ordering ever changes. See reasoning note
+// 2026-07-30-16h33-2.
 static constexpr uint32_t KEY_ERASED = 0x00;  // tombstone: every bit cleared
 static constexpr uint32_t KEY_MARKER = 0x01;  // start of a record
 
