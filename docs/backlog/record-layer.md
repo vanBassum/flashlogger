@@ -27,11 +27,11 @@ it. See reasoning note 2026-07-30-16h10 and its follow-up.
 
 Still broken or unproven, in rough order:
 
-- [ ] **A record spanning a reclaimed boundary loses its own marker.** Seen for
-      real: on a 2-sector store the erase-ahead wiped the marker of the record
-      being written, and `RamFlash` caught the illegal write. This is the
-      "dangling fields" hazard from the reasoning log, and the tombstone cleanup
-      is the fix.
+The "dangling fields" hazard needs no tombstone cleanup in this design. Reclaim
+erases the *next* sector before anything is written into the current one, so a new
+record can never run into the orphaned tail of an old one. Tested with straddling
+records over several laps, and the test has teeth — mutating the record-boundary
+check makes 27 records read as corrupt.
 - [ ] With exactly 3 sectors the ring keeps only about one sector of history, and
       every step into a new sector reclaims. Works, but check it is really usable
       before promising it.

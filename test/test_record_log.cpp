@@ -745,3 +745,39 @@ TEST(RecordLog, a_record_cannot_grow_long_enough_to_eat_its_own_start) {
     EXPECT_EQ(err, FlashLogError::RECORD_TOO_LONG);
     EXPECT_LT(written, 196) << "wrote " << written << " fields into a 196-field ring";
 }
+
+// 3-field records take 4 slots and a sector holds 49, so records straddle sector
+// edges. When a straddling record's first half is reclaimed, its tail is left
+// behind with no marker. Nothing may mistake that tail for part of another record.
+TEST(RecordLog, records_that_straddle_a_sector_edge_survive_reclaim) {
+    RamFlash<1024, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    for (uint32_t i = 1; i <= 200; i++) {          // laps the ring several times
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        ASSERT_EQ(record.field(8, &i, sizeof(i)), FlashLogError::OK);
+        ASSERT_EQ(record.field(9, &i, sizeof(i)), FlashLogError::OK);
+    }
+
+    auto reader = log.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0, corrupt = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        FlashLogError err = reader.read(7, &out, sizeof(out));
+        if (err == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "out of age order at record " << seen;
+            previous = out;
+            seen++;
+        } else if (err == FlashLogError::RECORD_CORRUPT) {
+            corrupt++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_EQ(corrupt, 0) << corrupt << " records read as corrupt";
+    EXPECT_EQ(previous, 200u) << "newest missing; reached " << seen;
+}
