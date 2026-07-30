@@ -17,4 +17,5 @@ enum class FlashLogError {
     RECORD_ALREADY_OPEN,
     RECORD_TORN,          // never committed: close() didn't run
     RECORD_CORRUPT,       // a real CRC was written and the data no longer matches it
+    END_OF_LOG,           // no further record to move to
 };

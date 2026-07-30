@@ -168,6 +168,29 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
     }
 }
 
+// Steps to the next record by walking forward to the next marker. A tombstone
+// ends a record but is itself skipped, so it doesn't stop the walk; an empty
+// field or the end of the store does.
+FlashLogError RecordReader::next()
+{
+    for (uint32_t index = start_ + 1; ; index++) {
+        uint32_t      key = 0;
+        uint8_t       value[MAX_VALUE_SIZE];
+        FlashLogError err = store_.read(index, &key, value);
+        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
+            return FlashLogError::END_OF_LOG;
+        if (err != FlashLogError::OK)
+            return err;
+
+        if (key == KEY_MARKER) {
+            start_ = index;
+            return FlashLogError::OK;
+        }
+        if (key == empty_key(store_.keySize()))
+            return FlashLogError::END_OF_LOG;
+    }
+}
+
 RecordWriter::RecordWriter(RecordLog* log)
     : log_(log)
 {

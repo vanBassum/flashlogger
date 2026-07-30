@@ -5,13 +5,11 @@ forgotten; items get deleted once implemented.
 
 ## Build
 
-- [ ] Start marker field per record (`key=0x01`, value `0xFF` placeholder).
-- [ ] CRC back-filled on close; width from `valueSize`.
-- [ ] Iterator: position on a record, read a field by key, step to the next.
 - [ ] Merge a value spread over repeated keys into a caller-supplied buffer.
 - [ ] Validity stamp on the iterator (copy of the record's stored CRC, checked
       after each read).
-- [ ] Mount/recovery: find the append point after reboot, skip torn records.
+- [ ] Mount/recovery: the append point is found, but torn records are not
+      skipped during iteration yet.
 - [ ] Field edit (clear bits) — must also clear that record's CRC to `0`, so the
       iterator has to remember where the record *started*, not just where it is.
 - [ ] Cache start/end pointers in `RecordLog` at `init()` so each new iterator
@@ -63,9 +61,6 @@ forgotten; items get deleted once implemented.
 ## Decide — inherited from the deleted design-decisions.md
 
 - [ ] Record header: any flags at all, or is the CRC the whole header value?
-- [ ] CRC8 and CRC32 polynomial choice (CRC16 reuses the existing `crc16`).
-- [ ] How a record's start is recognised during iteration (marker value is
-      settled; the scan rule isn't).
 - [ ] Reclaim policy and when erasing happens. The field layer exposes `clear`;
       the policy is a record-layer concern.
 

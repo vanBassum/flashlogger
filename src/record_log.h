@@ -14,6 +14,7 @@ public:
     RecordReader(FieldStore& store, uint32_t start);
 
     FlashLogError read(uint32_t key, void* value_out, size_t value_out_size);
+    FlashLogError next();
 
 private:
     FieldStore& store_;
