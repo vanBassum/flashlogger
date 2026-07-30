@@ -268,33 +268,92 @@ RecordLog::RecordLog(IFlash& flash)
 {
 }
 
+bool RecordLog::fieldIsEmpty(uint32_t index, bool& ok)
+{
+    uint32_t key = 0;
+    uint8_t  value[MAX_VALUE_SIZE];
+    ok = store_.read(index, &key, value) == FlashLogError::OK;
+    return ok && classify_key(key, store_.keySize()) == KeyKind::Empty;
+}
+
+// An erase stopped by power loss leaves a sector half erased, which puts a second
+// hole in the store and makes the append point ambiguous. Such a sector is
+// recognisable: fields are written from the start of a sector onwards, so empty
+// followed by written *inside one sector* can only mean an unfinished erase.
+// Finishing it restores the single-gap shape everything else relies on.
+FlashLogError RecordLog::finishInterruptedErase()
+{
+    uint32_t per   = store_.fieldsPerUnit();
+    uint32_t total = totalFields();
+    if (per == 0)
+        return FlashLogError::OK;
+
+    for (uint32_t base = 0; base < total; base += per) {
+        bool saw_empty = false;
+        for (uint32_t index = base; index < base + per; index++) {
+            bool ok    = false;
+            bool empty = fieldIsEmpty(index, ok);
+            if (!ok)
+                return FlashLogError::FLASH_READ_ERROR;
+
+            if (empty) {
+                saw_empty = true;
+                continue;
+            }
+            if (saw_empty) {
+                FlashLogError err = store_.clear(base, per);
+                if (err != FlashLogError::OK)
+                    return err;
+                // The erase took this sector's header copy with it.
+                err = store_.format(store_.keySize(), store_.valueSize());
+                if (err != FlashLogError::OK)
+                    return err;
+                break;
+            }
+        }
+    }
+    return FlashLogError::OK;
+}
+
+// The append point is the one place where written data gives way to erased space.
+// Taking "the first empty field" instead would pick any hole, which is how an
+// interrupted erase used to send the next record into the middle of the log.
+FlashLogError RecordLog::findAppendPoint()
+{
+    uint32_t total = totalFields();
+    next_index_ = 0;
+    if (total == 0)
+        return FlashLogError::OK;
+
+    for (uint32_t index = 0; index < total; index++) {
+        bool ok = false;
+        bool previous_empty = fieldIsEmpty((index + total - 1) % total, ok);
+        if (!ok)
+            return FlashLogError::FLASH_READ_ERROR;
+        bool empty = fieldIsEmpty(index, ok);
+        if (!ok)
+            return FlashLogError::FLASH_READ_ERROR;
+
+        if (!previous_empty && empty) {
+            next_index_ = index;
+            return FlashLogError::OK;
+        }
+    }
+
+    return FlashLogError::OK;   // nothing written at all, or no space left
+}
+
 FlashLogError RecordLog::init()
 {
     FlashLogError err = store_.init();
     if (err != FlashLogError::OK)
         return err;
 
-    // Work out where writing left off, or a reopened log restarts at 0 and
-    // writes over the records already there. The append point is the frontier
-    // between written fields and erased ones — structural, so it needs no CRC
-    // and works even if the last record was torn.
-    next_index_ = 0;
-    for (uint32_t index = 0; ; index++) {
-        uint32_t key = 0;
-        uint8_t  value[MAX_VALUE_SIZE];
+    err = finishInterruptedErase();
+    if (err != FlashLogError::OK)
+        return err;
 
-        err = store_.read(index, &key, value);
-        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
-            break;                                  // the store is full
-        if (err != FlashLogError::OK)
-            return err;
-        if (classify_key(key, store_.keySize()) == KeyKind::Empty)
-            break;                                  // first never-written field
-
-        next_index_ = index + 1;
-    }
-
-    return FlashLogError::OK;
+    return findAppendPoint();
 }
 
 // A format wipes the store: every sector is erased, then the header written.

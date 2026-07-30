@@ -604,3 +604,48 @@ TEST(RecordLog, the_log_survives_power_loss_between_erasing_sector_0_and_the_hea
     uint32_t out = 0;
     EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
 }
+
+// Power lost part-way through an erase: some of the sector came back to 0xFF, the
+// rest still holds old records. That leaves a second hole in the store, so the
+// scan for "where do I write next" can no longer just take the first empty field
+// it meets — it could pick the hole and start writing into the middle of the log.
+TEST(RecordLog, the_log_recovers_from_an_erase_interrupted_by_power_loss) {
+    RamFlash<1024, 256> flash;
+
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        for (uint32_t i = 1; i <= 150; i++) {     // wraps; cursor ends in sector 2
+            auto record = log.createRecord();
+            ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        }
+    }
+
+    // Half of sector 0 erased, half still holding records: an erase that stopped.
+    flash.eraseRangeForTest(0, 128);
+
+    RecordLog reopened(flash);
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+
+    uint32_t after_crash = 151;
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(7, &after_crash, sizeof(after_crash)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        if (reader.read(7, &out, sizeof(out)) == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "out of age order at record " << seen;
+            previous = out;
+            seen++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_EQ(previous, 151u) << "newest record missing; reached " << seen << " records";
+}

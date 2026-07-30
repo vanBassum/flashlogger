@@ -57,6 +57,10 @@ private:
     void     reclaimAhead();
     uint32_t takeSlot();
 
+    bool          fieldIsEmpty(uint32_t index, bool& ok);
+    FlashLogError finishInterruptedErase();
+    FlashLogError findAppendPoint();
+
     IFlash&    flash_;
     FieldStore store_;
     bool       record_open_  = false;

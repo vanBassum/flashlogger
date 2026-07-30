@@ -37,6 +37,14 @@ public:
     size_t getSectorSize() const override { return SectorSize; }
     size_t getSize() const override { return TotalSize; }
 
+    // TEST ONLY — not part of IFlash. Models an erase interrupted by power loss:
+    // part of the sector came back to 0xFF, the rest still holds old data. Real
+    // hardware erases a whole sector, so nothing in the library can do this.
+    void eraseRangeForTest(uint32_t address, size_t size) {
+        assert(address + size <= TotalSize);
+        memset(buf_ + address, 0xFF, size);
+    }
+
 private:
     uint8_t buf_[TotalSize];
 };

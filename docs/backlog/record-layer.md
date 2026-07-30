@@ -23,8 +23,6 @@ point. Left alone rather than rewritten.
 
 Still broken or unproven, in rough order:
 
-- [ ] **Reopening a wrapped log is untested.** `init()` should recover the append
-      point after a wrap, not just on the first lap.
 - [ ] **A record spanning a reclaimed boundary loses its own marker.** Seen for
       real: on a 2-sector store the erase-ahead wiped the marker of the record
       being written, and `RamFlash` caught the illegal write. This is the
@@ -37,9 +35,9 @@ Still broken or unproven, in rough order:
 - [ ] **Erase-ahead erases the sector ahead of the cursor, which is only the
       oldest data when there are enough sectors.** Check the arithmetic holds for
       the minimum once it's chosen.
-- [ ] Power loss *during* an erase can leave a second gap, making the boundary
-      ambiguous. Mount recovery has to resolve it — finishing the interrupted
-      erase is safe, but working out which gap was in progress isn't obvious.
+- [ ] `init()` now walks the whole store twice — once to spot a half-erased
+      sector, once to find the append point. Fine for correctness, wasteful at
+      mount. The cached start/end pointers would fold both into one pass.
 
 ## Build
 
