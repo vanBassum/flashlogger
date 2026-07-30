@@ -503,3 +503,36 @@ TEST(RecordLog, the_log_keeps_accepting_records_when_it_fills_up) {
         ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK) << "at record " << i;
     }
 }
+
+// Reading has to go round the corner too. Once the log has wrapped, iteration
+// must start at the OLDEST surviving record and walk the whole ring in age
+// order — not start at slot 0 and stop at the append point, which sees only the
+// handful of records written since the last wrap. Steps are capped so a walk
+// that fails to terminate fails the test instead of hanging it.
+TEST(RecordLog, a_wrapped_log_reads_oldest_first) {
+    RamFlash<1024, 256> flash;
+    RecordLog log(flash);
+    ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+    ASSERT_EQ(log.init(), FlashLogError::OK);
+
+    for (uint32_t i = 1; i <= 200; i++) {     // 196 fields of room, so this wraps
+        auto record = log.createRecord();
+        ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+    }
+
+    auto reader = log.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        if (reader.read(7, &out, sizeof(out)) == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "record " << seen << " is out of age order";
+            previous = out;
+            seen++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_GT(seen, 50) << "iteration only reached " << seen << " records";
+    EXPECT_EQ(previous, 200u);                // and it ends on the newest
+}

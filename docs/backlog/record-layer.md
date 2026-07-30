@@ -11,17 +11,20 @@ no metadata to keep, nothing to half-update on power loss. Decided over sequence
 numbers in the reserved header bytes, which stay available if exactness is ever
 needed (no format change).
 
+Reads wrap now too: every walk carries a step budget of the ring size instead of
+ending on the field layer's out-of-bounds error, and `firstRecord()` finds the
+oldest surviving record by starting at the append point and walking to the first
+marker — which also steps over an orphaned tail, since those are data fields with
+no marker.
+
+`init()`'s scan turns out to be correct as-is: because there is exactly one
+contiguous gap, the first empty field found from slot 0 is always the append
+point. Left alone rather than rewritten.
+
 Still broken or unproven, in rough order:
 
-- [ ] **Reading a wrapped store.** All the walks still assume linear: they end on
-      the field layer's out-of-bounds error instead of continuing at 0. Each one
-      needs to wrap *and* carry its own step budget (at most the total field
-      count), since the borrowed bound disappears.
-- [ ] **The oldest record is not at index 0** once wrapped. `firstRecord()`
-      hardcodes 0.
-- [ ] **`init()`'s append-point scan is linear-only** — it walks from 0 to the
-      first empty field, which isn't where the frontier is after a wrap. It
-      should find the written→empty transition wherever it is.
+- [ ] **Reopening a wrapped log is untested.** `init()` should recover the append
+      point after a wrap, not just on the first lap.
 - [ ] **A record spanning a reclaimed boundary loses its own marker.** Seen for
       real: on a 2-sector store the erase-ahead wiped the marker of the record
       being written, and `RamFlash` caught the illegal write. This is the

@@ -11,7 +11,7 @@ class RecordLog;
 // mutates the append cursor, and a record may be read long after it was closed.
 class RecordReader {
 public:
-    RecordReader(FieldStore& store, uint32_t start);
+    RecordReader(FieldStore& store, uint32_t start, uint32_t total_fields);
 
     FlashLogError read(uint32_t key, void* value_out, size_t value_out_size);
     FlashLogError next();
@@ -19,6 +19,7 @@ public:
 private:
     FieldStore& store_;
     uint32_t    start_;
+    uint32_t    total_;   // ring size, so a walk can wrap and still be bounded
 };
 
 // Handle for the record currently being written.

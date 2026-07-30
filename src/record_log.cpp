@@ -43,6 +43,13 @@ enum class KeyKind {
     Empty,      // never written
 };
 
+// One step round the ring. Every walk is bounded by the ring size, because in a
+// ring it can no longer stop by running off the end of the store.
+static uint32_t step(uint32_t index, uint32_t total)
+{
+    return total == 0 ? 0 : (index + 1) % total;
+}
+
 static KeyKind classify_key(uint32_t key, uint8_t key_size)
 {
     if (key == empty_key(key_size)) return KeyKind::Empty;
@@ -99,16 +106,16 @@ private:
 // Streams every data field of the record — keys as well as values, so a
 // corrupted key is caught too — through the CRC. Nothing is buffered: one field
 // is read at a time and folded in. Stops at whatever ends the record.
-static FlashLogError compute_record_crc(FieldStore& store, uint32_t start, uint8_t* out)
+static FlashLogError compute_record_crc(FieldStore& store, uint32_t start,
+                                       uint32_t total, uint8_t* out)
 {
     RecordCrc crc(crc_width(store.valueSize()));
 
-    for (uint32_t index = start + 1; ; index++) {
+    uint32_t index = step(start, total);
+    for (uint32_t steps = 1; steps < total; steps++, index = step(index, total)) {
         uint32_t      key = 0;
         uint8_t       value[MAX_VALUE_SIZE];
         FlashLogError err = store.read(index, &key, value);
-        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
-            break;                       // end of the store ends the record
         if (err != FlashLogError::OK)
             return err;
         if (classify_key(key, store.keySize()) != KeyKind::Data)
@@ -130,7 +137,7 @@ static FlashLogError compute_record_crc(FieldStore& store, uint32_t start, uint8
 // Is the record at `start` intact? Recomputes and compares — the stored value is
 // never assumed. Returns OK when it matches, and when it doesn't, says which of
 // the two special stored values explains it. See the reserved-CRC comment above.
-static FlashLogError classify_record(FieldStore& store, uint32_t start)
+static FlashLogError classify_record(FieldStore& store, uint32_t start, uint32_t total)
 {
     uint32_t      marker = 0;
     uint8_t       stored[MAX_VALUE_SIZE];
@@ -139,7 +146,7 @@ static FlashLogError classify_record(FieldStore& store, uint32_t start)
         return err;
 
     uint8_t fresh[MAX_VALUE_SIZE];
-    err = compute_record_crc(store, start, fresh);
+    err = compute_record_crc(store, start, total, fresh);
     if (err != FlashLogError::OK)
         return err;
 
@@ -159,14 +166,14 @@ static FlashLogError classify_record(FieldStore& store, uint32_t start)
     return FlashLogError::OK;                  // cleared by an edit: trust it
 }
 
-RecordReader::RecordReader(FieldStore& store, uint32_t start)
-    : store_(store), start_(start)
+RecordReader::RecordReader(FieldStore& store, uint32_t start, uint32_t total_fields)
+    : store_(store), start_(start), total_(total_fields)
 {
 }
 
 // Walks this record's fields looking for the key, starting after the marker and
-// stopping at whatever ends the record. Bounded by the field layer, which
-// refuses an index past the end of the store.
+// stopping at whatever ends the record. Bounded by the ring size — a wrapping
+// walk can't stop by running off the end of the store any more.
 FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out_size)
 {
     // Refuse up front rather than overrunning the caller's buffer: the field
@@ -176,13 +183,14 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
 
     // Torn or corrupt is reported, not papered over: pointing straight at a bad
     // record tells you so. Only next() skips torn ones.
-    FlashLogError err = classify_record(store_, start_);
+    FlashLogError err = classify_record(store_, start_, total_);
     if (err != FlashLogError::OK)
         return err;
 
-    for (uint32_t index = start_ + 1; ; index++) {
-        uint32_t      found = 0;
-        FlashLogError err   = store_.read(index, &found, value_out);
+    uint32_t index = step(start_, total_);
+    for (uint32_t steps = 1; steps < total_; steps++, index = step(index, total_)) {
+        uint32_t found = 0;
+        err = store_.read(index, &found, value_out);
         if (err != FlashLogError::OK)
             return err;
         if (found == key)
@@ -192,6 +200,7 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
         if (classify_key(found, store_.keySize()) != KeyKind::Data)
             return FlashLogError::ARG_INVALID;  // not found — placeholder error
     }
+    return FlashLogError::ARG_INVALID;          // walked the whole ring
 }
 
 // Steps to the next record by walking forward to the next marker. A tombstone
@@ -199,12 +208,11 @@ FlashLogError RecordReader::read(uint32_t key, void* value_out, size_t value_out
 // field or the end of the store does.
 FlashLogError RecordReader::next()
 {
-    for (uint32_t index = start_ + 1; ; index++) {
+    uint32_t index = step(start_, total_);
+    for (uint32_t steps = 1; steps < total_; steps++, index = step(index, total_)) {
         uint32_t      key = 0;
         uint8_t       value[MAX_VALUE_SIZE];
         FlashLogError err = store_.read(index, &key, value);
-        if (err == FlashLogError::ARG_OUT_OF_BOUNDS)
-            return FlashLogError::END_OF_LOG;
         if (err != FlashLogError::OK)
             return err;
 
@@ -214,7 +222,7 @@ FlashLogError RecordReader::next()
             // sits further on — so a torn record is not the end of the log and
             // must not hide what follows. Corrupt records are *not* skipped:
             // silently dropping them would defeat the CRC.
-            if (classify_record(store_, index) == FlashLogError::RECORD_TORN)
+            if (classify_record(store_, index, total_) == FlashLogError::RECORD_TORN)
                 continue;
             start_ = index;
             return FlashLogError::OK;
@@ -227,6 +235,7 @@ FlashLogError RecordReader::next()
             break;                       // part of a record we're leaving behind
         }
     }
+    return FlashLogError::END_OF_LOG;    // walked the whole ring
 }
 
 RecordWriter::RecordWriter(RecordLog* log)
@@ -363,10 +372,26 @@ RecordWriter RecordLog::createRecord()
     return RecordWriter(this);
 }
 
-// The first record starts at index 0: format() wipes the store and appends
-// begin there. Finding it by scanning is only needed once reclaim can leave
-// tombstones ahead of it.
-RecordReader RecordLog::firstRecord() { return RecordReader(store_, 0); }
+// The oldest record is not at index 0 once the log has wrapped. It sits just past
+// the gap, so the search starts at the append point and walks forward to the first
+// marker. That also steps over the orphaned tail a reclaimed record can leave
+// behind, since those are data fields with no marker of their own.
+RecordReader RecordLog::firstRecord()
+{
+    uint32_t total = totalFields();
+    uint32_t index = next_index_;
+
+    for (uint32_t steps = 0; steps < total; steps++, index = step(index, total)) {
+        uint32_t key = 0;
+        uint8_t  value[MAX_VALUE_SIZE];
+        if (store_.read(index, &key, value) != FlashLogError::OK)
+            break;
+        if (classify_key(key, store_.keySize()) == KeyKind::Marker)
+            return RecordReader(store_, index, total);
+    }
+
+    return RecordReader(store_, next_index_, total);   // no records to read
+}
 
 FlashLogError RecordLog::writeField(uint32_t key, const void* value, size_t value_size)
 {
@@ -390,7 +415,7 @@ FlashLogError RecordLog::closeRecord()
     // erased placeholder only clears bits, so NOR allows it.
     uint8_t       stamp[MAX_VALUE_SIZE];
     memset(stamp, 0xFF, store_.valueSize());
-    FlashLogError err = compute_record_crc(store_, record_start_, stamp);
+    FlashLogError err = compute_record_crc(store_, record_start_, totalFields(), stamp);
     if (err != FlashLogError::OK)
         return err;
 
