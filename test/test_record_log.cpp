@@ -536,3 +536,71 @@ TEST(RecordLog, a_wrapped_log_reads_oldest_first) {
     EXPECT_GT(seen, 50) << "iteration only reached " << seen << " records";
     EXPECT_EQ(previous, 200u);                // and it ends on the newest
 }
+
+// Turning it off and on again after the log has gone round: init() has to find
+// the append point wherever it ended up, not assume the first lap.
+TEST(RecordLog, reopening_a_wrapped_log_keeps_going) {
+    RamFlash<1024, 256> flash;
+
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        for (uint32_t i = 1; i <= 200; i++) {      // wraps
+            auto record = log.createRecord();
+            ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        }
+    }
+
+    RecordLog reopened(flash);                     // fresh object, same flash
+    ASSERT_EQ(reopened.init(), FlashLogError::OK);
+
+    uint32_t after_reboot = 201;
+    {
+        auto record = reopened.createRecord();
+        ASSERT_EQ(record.field(7, &after_reboot, sizeof(after_reboot)), FlashLogError::OK);
+    }
+
+    auto reader = reopened.firstRecord();
+    uint32_t previous = 0, out = 0;
+    int seen = 0;
+    for (int steps = 0; steps < 500; steps++) {
+        if (reader.read(7, &out, sizeof(out)) == FlashLogError::OK) {
+            EXPECT_GT(out, previous) << "out of age order at record " << seen;
+            previous = out;
+            seen++;
+        }
+        if (reader.next() != FlashLogError::OK)
+            break;
+    }
+
+    EXPECT_GT(seen, 50) << "only reached " << seen << " records";
+    EXPECT_EQ(previous, 201u);        // the record written after the reboot
+}
+
+// Reclaiming the first sector wipes the format header, and it is written back
+// immediately after. This test cuts the power in that gap — the erase happened,
+// the write did not. The records in the other sectors are all still on the chip,
+// so the log must still mount and read them.
+TEST(RecordLog, the_log_survives_power_loss_between_erasing_sector_0_and_the_header) {
+    RamFlash<1024, 256> flash;
+
+    {
+        RecordLog log(flash);
+        ASSERT_EQ(log.format(1, 4), FlashLogError::OK);
+        ASSERT_EQ(log.init(), FlashLogError::OK);
+        for (uint32_t i = 1; i <= 200; i++) {      // wraps, so sector 0 gets reclaimed
+            auto record = log.createRecord();
+            ASSERT_EQ(record.field(7, &i, sizeof(i)), FlashLogError::OK);
+        }
+    }
+
+    flash.erase(0, 0);            // power lost right here: header gone, records not
+
+    RecordLog reopened(flash);
+    EXPECT_EQ(reopened.init(), FlashLogError::OK);
+
+    auto reader = reopened.firstRecord();
+    uint32_t out = 0;
+    EXPECT_EQ(reader.read(7, &out, sizeof(out)), FlashLogError::OK);
+}

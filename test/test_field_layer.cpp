@@ -23,13 +23,14 @@ TEST(FieldStore, init_returns_unknown_format_when_magic_is_wrong) {
     EXPECT_EQ(store.init(), FlashLogError::FORMAT_CORRUPT);
 }
 
-TEST(FieldStore, init_returns_unknown_format_when_crc_is_corrupt) {
+// Every sector holds a copy of the header, so one damaged copy is survivable.
+TEST(FieldStore, init_recovers_from_a_corrupt_header_copy) {
     RamFlash<4096, 256> flash;
     FieldStore store(flash);
     store.format(1, 4);
     uint8_t zeros[2] = {0x00, 0x00};
-    flash.write(6, zeros, 2, 0);
-    EXPECT_EQ(store.init(), FlashLogError::FORMAT_CORRUPT);
+    flash.write(6, zeros, 2, 0);            // wreck sector 0's CRC
+    EXPECT_EQ(store.init(), FlashLogError::OK);
 }
 
 TEST(FieldStore, format_returns_invalid_argument_for_zero_key_size) {
@@ -420,3 +421,17 @@ TEST(FieldStore, can_write_into_a_cleared_unit) {
 
 
 
+
+// ...but if every copy is damaged there is nothing left to recover from, and that
+// is different from a chip that was never formatted.
+TEST(FieldStore, init_returns_unknown_format_when_every_header_copy_is_corrupt) {
+    RamFlash<4096, 256> flash;
+    FieldStore store(flash);
+    store.format(1, 4);
+
+    uint8_t zeros[2] = {0x00, 0x00};
+    for (uint32_t address = 0; address < 4096; address += 256)
+        flash.write(address + 6, zeros, 2, 0);
+
+    EXPECT_EQ(store.init(), FlashLogError::FORMAT_CORRUPT);
+}

@@ -13,8 +13,12 @@ bits (1→0), erase resets a whole sector to `0xFF`.
 
 ## Field-layer header (decided, implemented)
 
-Written by `format()`, validated by `init()`. Lives in the reserved top
-8 bytes of sector 0.
+Written by `format()`, validated by `init()`. A copy lives in the reserved top
+8 bytes of **every** sector, not just sector 0 — the ring reclaims sectors, and
+reclaiming sector 0 would otherwise wipe the only header and make the whole chip
+read as unformatted. `init()` uses the first usable copy it finds; `format()` is
+also how a freshly erased sector gets its copy back (re-writing an identical
+header changes no bits, so NOR allows it).
 
 | Offset | Size | Field |
 |--------|------|-------|

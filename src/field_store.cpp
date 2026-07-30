@@ -72,33 +72,56 @@ FlashLogError FieldStore::format(size_t key_size, size_t value_size)
     uint8_t buf[HEADER_SIZE];
     encode_header(buf, static_cast<uint8_t>(key_size), static_cast<uint8_t>(value_size));
 
-    size_t written = flash_.write(0, buf, HEADER_SIZE, 0);
-    return written == HEADER_SIZE ? FlashLogError::OK : FlashLogError::FLASH_WRITE_ERROR;
+    // A copy in every sector's reserved bytes, which is what that space was set
+    // aside for. Losing one sector to an erase then never loses the format.
+    // Re-writing an identical header is legal on NOR (no bits change), so this is
+    // also how a freshly erased sector gets its copy back.
+    size_t sector_size = flash_.getSectorSize();
+    for (size_t address = 0; address < flash_.getSize(); address += sector_size) {
+        size_t written = flash_.write(static_cast<uint32_t>(address), buf, HEADER_SIZE, 0);
+        if (written != HEADER_SIZE)
+            return FlashLogError::FLASH_WRITE_ERROR;
+    }
+    return FlashLogError::OK;
 }
 
 FlashLogError FieldStore::init()
 {
+    // Any sector's copy will do, so one erased or rotted header is survivable.
+    // Only if no copy anywhere is usable does this fail, and then the answer says
+    // which it was: nothing written at all, or something written and damaged.
+    size_t  sector_size = flash_.getSectorSize();
     uint8_t buf[HEADER_SIZE];
-    size_t n = flash_.read(0, buf, HEADER_SIZE, 0);
-    if (n != HEADER_SIZE)
-        return FlashLogError::FLASH_READ_ERROR;
+    bool    found       = false;
+    bool    saw_damage  = false;
 
-    uint32_t magic = decode_u32_le(buf);
-    if (magic == 0xFFFFFFFF)
-        return FlashLogError::FORMAT_MISSING;
-    if (magic != MAGIC)
-        return FlashLogError::FORMAT_CORRUPT;
+    for (size_t address = 0; address < flash_.getSize() && !found; address += sector_size) {
+        size_t n = flash_.read(static_cast<uint32_t>(address), buf, HEADER_SIZE, 0);
+        if (n != HEADER_SIZE)
+            return FlashLogError::FLASH_READ_ERROR;
 
-    uint16_t expected = crc16(buf, HEADER_CRC_LEN);
-    if (decode_u16_le(buf + HEADER_CRC_LEN) != expected)
-        return FlashLogError::FORMAT_CORRUPT;
+        uint32_t magic = decode_u32_le(buf);
+        if (magic == 0xFFFFFFFF)
+            continue;                       // this sector never had a copy
+        if (magic != MAGIC) {
+            saw_damage = true;
+            continue;
+        }
+        if (decode_u16_le(buf + HEADER_CRC_LEN) != crc16(buf, HEADER_CRC_LEN)) {
+            saw_damage = true;
+            continue;
+        }
+        found = true;
+    }
+
+    if (!found)
+        return saw_damage ? FlashLogError::FORMAT_CORRUPT : FlashLogError::FORMAT_MISSING;
 
     key_size_     = buf[4];
     value_size_   = buf[5];
     initialized_  = true;
 
     size_t field_size    = key_size_ + value_size_;
-    size_t sector_size   = flash_.getSectorSize();
     size_t total_sectors = flash_.getSize() / sector_size;
     total_fields_ = static_cast<uint32_t>(
         total_sectors * fields_in_sector(sector_size - HEADER_SIZE, field_size));

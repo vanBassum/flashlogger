@@ -336,8 +336,15 @@ void RecordLog::reclaimAhead()
     uint8_t  value[MAX_VALUE_SIZE];
     if (store_.read(ahead, &key, value) != FlashLogError::OK)
         return;
-    if (classify_key(key, store_.keySize()) != KeyKind::Empty)
-        store_.clear(ahead, per);
+    if (classify_key(key, store_.keySize()) == KeyKind::Empty)
+        return;
+
+    store_.clear(ahead, per);
+
+    // The erase took that sector's copy of the format header with it, so put it
+    // back. Losing power in this gap is survivable: every other sector still
+    // holds a copy, and init() will use any of them.
+    store_.format(store_.keySize(), store_.valueSize());
 }
 
 // Hands out the next field position, wrapping at the end of the store.
